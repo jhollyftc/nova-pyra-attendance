@@ -61,7 +61,21 @@ export async function POST(req: NextRequest) {
   const mins = totalMinutes % 60;
   const duration = hours > 0 ? `${hours} hr ${mins} min` : `${mins} min`;
 
+  // Season total (Sept 1 of current or previous year)
+  const now = new Date();
+  const seasonYear = now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1;
+  const seasonStart = new Date(seasonYear, 8, 1).toISOString();
+
+  const seasonRow = db.prepare(
+    `SELECT SUM(total_minutes) AS total_minutes
+     FROM attendance_records
+     WHERE student_id = ? AND status IN ('checked_out', 'manual_fixed') AND check_in_time >= ?`
+  ).get(matched.student_id, seasonStart) as { total_minutes: number | null };
+
+  const seasonMins = seasonRow?.total_minutes ?? 0;
+  const seasonHours = (seasonMins / 60).toFixed(1);
+
   return NextResponse.json({
-    message: `Great work, ${displayName}! Checked out at ${timeStr}. Total: ${duration}.`,
+    message: `Great work, ${displayName}! Checked out at ${timeStr}. Session: ${duration}. Season total: ${seasonHours} hrs!`,
   });
 }

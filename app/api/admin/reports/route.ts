@@ -21,30 +21,26 @@ export async function GET(req: NextRequest) {
   }
 
   const db = getDb();
-  const rows = db
-    .prepare(
-      `SELECT s.student_id, s.display_name, s.first_name, s.last_name, s.grade, s.subteam,
-              SUM(ar.total_minutes) AS total_minutes,
-              COUNT(DISTINCT ar.session_id) AS session_count
-       FROM attendance_records ar
-       JOIN students s ON s.student_id = ar.student_id
-       WHERE ar.status IN ('checked_out', 'manual_fixed')
-         AND ar.check_in_time >= ?
-       GROUP BY s.student_id
-       ORDER BY total_minutes DESC`
-    )
-    .all(fromDate) as {
-      student_id: string;
-      display_name: string | null;
-      first_name: string;
-      last_name: string;
-      grade: string | null;
-      subteam: string | null;
-      total_minutes: number;
-      session_count: number;
-    }[];
 
-  const summaries = rows.map((r) => ({
+  // Per-student totals
+  const summaryRows = db.prepare(
+    `SELECT s.student_id, s.display_name, s.first_name, s.last_name, s.grade, s.subteam,
+            SUM(ar.total_minutes) AS total_minutes,
+            COUNT(DISTINCT ar.session_id) AS session_count
+     FROM attendance_records ar
+     JOIN students s ON s.student_id = ar.student_id
+     WHERE ar.status IN ('checked_out', 'manual_fixed')
+       AND ar.check_in_time >= ?
+     GROUP BY s.student_id
+     ORDER BY total_minutes DESC`
+  ).all(fromDate) as {
+    student_id: string; display_name: string | null;
+    first_name: string; last_name: string;
+    grade: string | null; subteam: string | null;
+    total_minutes: number; session_count: number;
+  }[];
+
+  const summaries = summaryRows.map((r) => ({
     student_id: r.student_id,
     name: r.display_name ?? `${r.first_name} ${r.last_name}`,
     grade: r.grade,
@@ -53,5 +49,38 @@ export async function GET(req: NextRequest) {
     session_count: r.session_count,
   }));
 
-  return NextResponse.json(summaries);
+  // Session attendance trend
+  const sessionTrend = db.prepare(
+    `SELECT sess.session_name, sess.session_date,
+            COUNT(DISTINCT ar.student_id) AS student_count
+     FROM sessions sess
+     LEFT JOIN attendance_records ar
+       ON ar.session_id = sess.session_id
+       AND ar.status IN ('checked_out', 'manual_fixed', 'missing_checkout', 'checked_in')
+     WHERE sess.status IN ('active', 'ended')
+       AND sess.session_date >= ?
+     GROUP BY sess.session_id
+     ORDER BY sess.session_date ASC`
+  ).all(fromDate.split("T")[0]) as {
+    session_name: string; session_date: string; student_count: number;
+  }[];
+
+  // Subteam breakdown
+  const subteamRows = db.prepare(
+    `SELECT COALESCE(s.subteam, 'Unassigned') AS subteam,
+            SUM(ar.total_minutes) AS total_minutes
+     FROM attendance_records ar
+     JOIN students s ON s.student_id = ar.student_id
+     WHERE ar.status IN ('checked_out', 'manual_fixed')
+       AND ar.check_in_time >= ?
+     GROUP BY subteam
+     ORDER BY total_minutes DESC`
+  ).all(fromDate) as { subteam: string; total_minutes: number }[];
+
+  const subteamBreakdown = subteamRows.map((r) => ({
+    subteam: r.subteam,
+    hours: parseFloat((r.total_minutes / 60).toFixed(1)),
+  }));
+
+  return NextResponse.json({ summaries, sessionTrend, subteamBreakdown });
 }
