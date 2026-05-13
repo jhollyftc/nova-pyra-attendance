@@ -5,7 +5,7 @@ import { Delete } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const PIN_LENGTH = 4;
-const RESULT_CLEAR_MS = 3500;
+const RESULT_CLEAR_MS = 6000;
 const IDLE_CLEAR_MS = 12000;
 
 type Phase =
@@ -155,7 +155,7 @@ export default function PinPad() {
         }`}
       >
         <div className="text-5xl">{phase.success ? "✓" : "✗"}</div>
-        <p className="text-lg font-medium leading-snug">{phase.message}</p>
+        <p className="text-lg font-medium leading-snug whitespace-pre-line">{phase.message}</p>
       </div>
     );
   }

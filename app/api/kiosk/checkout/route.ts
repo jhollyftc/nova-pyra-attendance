@@ -76,6 +76,6 @@ export async function POST(req: NextRequest) {
   const seasonHours = (seasonMins / 60).toFixed(1);
 
   return NextResponse.json({
-    message: `Great work, ${displayName}! Checked out at ${timeStr}. Session: ${duration}. Season total: ${seasonHours} hrs!`,
+    message: `Great work, ${displayName}!\nChecked out at ${timeStr}\nSession: ${duration}  ·  Season: ${seasonHours} hrs`,
   });
 }
