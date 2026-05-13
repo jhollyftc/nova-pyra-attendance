@@ -33,9 +33,9 @@ type SubteamRow = {
 };
 
 const CHART_COLORS = {
-  bar: "#10b981",
-  line: "#60a5fa",
-  subteam: "#f59e0b",
+  bar: "#1173F1",
+  line: "#1173F1",
+  subteam: "#0A4FB3",
 };
 
 const tooltipStyle = {

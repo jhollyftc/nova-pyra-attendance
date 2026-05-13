@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
-import { Delete } from "lucide-react";
+import { useState, useCallback, useEffect, useRef } from "react";
+import { Delete, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const PIN_LENGTH = 4;
@@ -18,25 +18,30 @@ type Phase =
 export default function PinPad() {
   const [pin, setPin] = useState("");
   const [phase, setPhase] = useState<Phase>({ name: "entering" });
-  const [idleTimer, setIdleTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    };
+  }, []);
 
   const resetToEntering = useCallback(() => {
     setPin("");
     setPhase({ name: "entering" });
   }, []);
 
-  const resetIdle = useCallback(() => {
-    setIdleTimer((prev) => {
-      if (prev) clearTimeout(prev);
-      return setTimeout(resetToEntering, IDLE_CLEAR_MS);
-    });
-  }, [resetToEntering]);
+  const clearIdle = useCallback(() => {
+    if (idleTimerRef.current) {
+      clearTimeout(idleTimerRef.current);
+      idleTimerRef.current = null;
+    }
+  }, []);
 
-  useEffect(() => {
-    return () => {
-      if (idleTimer) clearTimeout(idleTimer);
-    };
-  }, [idleTimer]);
+  const resetIdle = useCallback(() => {
+    clearIdle();
+    idleTimerRef.current = setTimeout(resetToEntering, IDLE_CLEAR_MS);
+  }, [resetToEntering, clearIdle]);
 
   const lookup = useCallback(async (enteredPin: string) => {
     setPhase({ name: "loading" });
@@ -48,6 +53,7 @@ export default function PinPad() {
       });
       const data = await res.json();
       if (!res.ok) {
+        clearIdle();
         setPhase({ name: "result", success: false, message: data.message });
         setTimeout(resetToEntering, RESULT_CLEAR_MS);
       } else {
@@ -59,10 +65,11 @@ export default function PinPad() {
         resetIdle();
       }
     } catch {
+      clearIdle();
       setPhase({ name: "result", success: false, message: "Connection error. Try again." });
       setTimeout(resetToEntering, RESULT_CLEAR_MS);
     }
-  }, [resetToEntering, resetIdle]);
+  }, [resetToEntering, resetIdle, clearIdle]);
 
   const pressDigit = useCallback(
     (d: string) => {
@@ -95,13 +102,17 @@ export default function PinPad() {
         body: JSON.stringify({ pin }),
       });
       const data = await res.json();
+      clearIdle();
       setPhase({ name: "result", success: res.ok, message: data.message, detail: data.detail, stats: data.stats });
-      setTimeout(resetToEntering, RESULT_CLEAR_MS);
+      if (!data.stats) {
+        setTimeout(resetToEntering, RESULT_CLEAR_MS);
+      }
     } catch {
+      clearIdle();
       setPhase({ name: "result", success: false, message: "Connection error. Try again." });
       setTimeout(resetToEntering, RESULT_CLEAR_MS);
     }
-  }, [phase, pin, resetToEntering]);
+  }, [phase, pin, resetToEntering, clearIdle]);
 
   // ── Confirmation screen ───────────────────────────────────
   if (phase.name === "confirming" || phase.name === "actioning") {
@@ -119,11 +130,12 @@ export default function PinPad() {
         </div>
         <div className="flex flex-col gap-3 w-full">
           <Button
+            type="button"
             size="lg"
             className={`h-14 text-lg rounded-2xl ${
               isCheckout
-                ? "bg-orange-500 hover:bg-orange-600 text-white"
-                : "bg-emerald-600 hover:bg-emerald-700 text-white"
+                ? "bg-[#0A4FB3] hover:bg-[#07326A] text-white"
+                : "bg-[#1173F1] hover:bg-[#0A4FB3] text-white"
             }`}
             onClick={confirm}
             disabled={busy}
@@ -131,6 +143,7 @@ export default function PinPad() {
             {busy ? "…" : isCheckout ? "Check Out" : "Check In"}
           </Button>
           <Button
+            type="button"
             size="lg"
             variant="outline"
             className="h-14 text-lg rounded-2xl border-2"
@@ -147,19 +160,31 @@ export default function PinPad() {
   // ── Result screen ─────────────────────────────────────────
   if (phase.name === "result") {
     return (
-      <div
-        className={`flex flex-col items-center justify-center gap-3 p-8 rounded-2xl min-h-48 w-full max-w-xs text-center ${
-          phase.success ? "bg-green-950 text-green-100" : "bg-red-950 text-red-200"
-        }`}
-      >
-        <div className="text-5xl">{phase.success ? "✓" : "✗"}</div>
-        <p className="text-2xl font-bold leading-tight">{phase.message}</p>
-        {phase.detail && (
-          <p className="text-lg text-green-300">{phase.detail}</p>
-        )}
+      <div className="relative w-full max-w-xs">
         {phase.stats && (
-          <p className="text-base font-semibold text-amber-300">{phase.stats}</p>
+          <button
+            type="button"
+            onClick={resetToEntering}
+            className="absolute -top-3 -right-3 z-10 flex items-center justify-center w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white/70 hover:text-white transition-all"
+            aria-label="Dismiss"
+          >
+            <X className="w-4 h-4" />
+          </button>
         )}
+        <div
+          className={`flex flex-col items-center justify-center gap-3 p-8 rounded-2xl min-h-48 w-full text-center ${
+            phase.success ? "bg-[#07326A] text-white" : "bg-red-950 text-red-200"
+          }`}
+        >
+          <div className="text-5xl">{phase.success ? "✓" : "✗"}</div>
+          <p className="text-2xl font-bold leading-tight">{phase.message}</p>
+          {phase.detail && (
+            <p className="text-lg text-[#E6E6E6]">{phase.detail}</p>
+          )}
+          {phase.stats && (
+            <p className="text-base font-semibold text-[#1173F1]">{phase.stats}</p>
+          )}
+        </div>
       </div>
     );
   }
@@ -194,6 +219,7 @@ export default function PinPad() {
           if (key === "⌫")
             return (
               <button
+                type="button"
                 key={idx}
                 onClick={backspace}
                 disabled={pin.length === 0}
@@ -204,6 +230,7 @@ export default function PinPad() {
             );
           return (
             <button
+              type="button"
               key={idx}
               onClick={() => pressDigit(key)}
               className="flex items-center justify-center w-20 h-20 rounded-2xl text-2xl font-semibold bg-muted hover:bg-muted/70 active:scale-95 transition-all select-none border-2 border-white/30"

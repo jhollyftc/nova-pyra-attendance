@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
   });
 
   return NextResponse.json({
-    message: `See you later, ${matched.display_name ?? matched.first_name}!`,
+    message: `Welcome, ${matched.display_name ?? matched.first_name}!`,
     detail: `Checked in at ${timeStr}`,
   });
 }
