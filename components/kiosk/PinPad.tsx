@@ -13,7 +13,7 @@ type Phase =
   | { name: "loading" }
   | { name: "confirming"; studentName: string; action: "checkin" | "checkout" }
   | { name: "actioning"; studentName: string; action: "checkin" | "checkout" }
-  | { name: "result"; success: boolean; message: string };
+  | { name: "result"; success: boolean; message: string; detail?: string; stats?: string };
 
 export default function PinPad() {
   const [pin, setPin] = useState("");
@@ -95,7 +95,7 @@ export default function PinPad() {
         body: JSON.stringify({ pin }),
       });
       const data = await res.json();
-      setPhase({ name: "result", success: res.ok, message: data.message });
+      setPhase({ name: "result", success: res.ok, message: data.message, detail: data.detail, stats: data.stats });
       setTimeout(resetToEntering, RESULT_CLEAR_MS);
     } catch {
       setPhase({ name: "result", success: false, message: "Connection error. Try again." });
@@ -148,14 +148,18 @@ export default function PinPad() {
   if (phase.name === "result") {
     return (
       <div
-        className={`flex flex-col items-center justify-center gap-4 p-8 rounded-2xl min-h-48 w-full max-w-xs text-center ${
-          phase.success
-            ? "bg-green-50 text-green-800 dark:bg-green-950 dark:text-green-200"
-            : "bg-red-50 text-red-800 dark:bg-red-950 dark:text-red-200"
+        className={`flex flex-col items-center justify-center gap-3 p-8 rounded-2xl min-h-48 w-full max-w-xs text-center ${
+          phase.success ? "bg-green-950 text-green-100" : "bg-red-950 text-red-200"
         }`}
       >
         <div className="text-5xl">{phase.success ? "✓" : "✗"}</div>
-        <p className="text-lg font-medium leading-snug whitespace-pre-line">{phase.message}</p>
+        <p className="text-2xl font-bold leading-tight">{phase.message}</p>
+        {phase.detail && (
+          <p className="text-lg text-green-300">{phase.detail}</p>
+        )}
+        {phase.stats && (
+          <p className="text-base font-semibold text-amber-300">{phase.stats}</p>
+        )}
       </div>
     );
   }
