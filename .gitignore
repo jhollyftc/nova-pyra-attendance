@@ -36,6 +36,11 @@ yarn-error.log*
 # vercel
 .vercel
 
+# database
+nova-pyra.db
+nova-pyra.db-shm
+nova-pyra.db-wal
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
