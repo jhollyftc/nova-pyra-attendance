@@ -17,7 +17,12 @@ type Phase =
   | { name: "actioning"; studentName: string; action: "checkin" | "checkout" }
   | { name: "result"; success: boolean; action?: "checkin" | "checkout"; message: string; detail?: string; stats?: string; milestone?: string };
 
-export default function PinPad() {
+type PinPadProps = {
+  onMilestone?: (milestone: string | null) => void;
+  onAction?: () => void;
+};
+
+export default function PinPad({ onMilestone, onAction }: PinPadProps) {
   const [pin, setPin] = useState("");
   const [phase, setPhase] = useState<Phase>({ name: "entering" });
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -30,9 +35,10 @@ export default function PinPad() {
   }, []);
 
   const resetToEntering = useCallback(() => {
+    onMilestone?.(null);
     setPin("");
     setPhase({ name: "entering" });
-  }, []);
+  }, [onMilestone]);
 
   const clearIdle = useCallback(() => {
     if (idleTimerRef.current) {
@@ -180,8 +186,12 @@ const playClick = useCallback(() => {
       });
       const data = await res.json();
       clearIdle();
-      if (res.ok) playSuccess();
+      if (res.ok) {
+        playSuccess();
+        onAction?.();
+      }
       if (data.milestone) playFireworks();
+      onMilestone?.(data.milestone ?? null);
       setPhase({ name: "result", success: res.ok, action, message: data.message, detail: data.detail, stats: data.stats, milestone: data.milestone });
       if (!data.stats) {
         setTimeout(resetToEntering, RESULT_CLEAR_MS);
@@ -191,7 +201,7 @@ const playClick = useCallback(() => {
       setPhase({ name: "result", success: false, message: "Connection error. Try again." });
       setTimeout(resetToEntering, RESULT_CLEAR_MS);
     }
-  }, [phase, pin, resetToEntering, clearIdle, playSuccess, playFireworks]);
+  }, [phase, pin, resetToEntering, clearIdle, playSuccess, playFireworks, onMilestone, onAction]);
 
     useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -297,9 +307,6 @@ const playClick = useCallback(() => {
           )}
           {phase.stats && (
             <p className={`text-base font-semibold ${isCheckout ? "text-[#07326A]" : "text-white/90"}`}>{phase.stats}</p>
-          )}
-          {phase.milestone && (
-            <p className="text-base font-bold text-yellow-500 mt-1">🏆 {phase.milestone} Season Milestone!</p>
           )}
         </div>
       </div>

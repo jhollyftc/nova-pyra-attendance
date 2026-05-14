@@ -1,19 +1,26 @@
 "use client";
 
 import { useState } from "react";
-import { Trophy } from "lucide-react";
+import { Trophy, UserCheck } from "lucide-react";
 import PinPad from "@/components/kiosk/PinPad";
 import Leaderboard from "@/components/kiosk/Leaderboard";
+import CheckedIn from "@/components/kiosk/CheckedIn";
 
 export default function KioskPage() {
   const teamName = process.env.NEXT_PUBLIC_TEAM_NAME ?? "Nova Pyra";
   const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [showCheckedIn, setShowCheckedIn] = useState(false);
+  const [milestone, setMilestone] = useState<string | null>(null);
+  const [checkedInKey, setCheckedInKey] = useState(0);
 
   const today = new Date().toLocaleDateString("en-US", {
     weekday: "long",
     month: "long",
     day: "numeric",
   });
+
+  const anyPanel = showLeaderboard || showCheckedIn;
+  const bothPanels = showLeaderboard && showCheckedIn;
 
   return (
     <main className="relative min-h-screen flex flex-col items-center justify-center bg-background p-6 overflow-hidden">
@@ -24,28 +31,43 @@ export default function KioskPage() {
         className="absolute inset-0 w-full h-full object-cover opacity-10 pointer-events-none select-none"
       />
 
-      {/* Leaderboard toggle */}
-      <button
-        type="button"
-        onClick={() => setShowLeaderboard((v) => !v)}
-        className={`absolute top-5 right-5 z-20 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
-          showLeaderboard
-            ? "bg-[#1173F1] text-white"
-            : "bg-muted text-muted-foreground hover:text-foreground"
-        }`}
-        aria-label="Toggle leaderboard"
-      >
-        <Trophy className="w-4 h-4" />
-        <span>Leaders</span>
-      </button>
+      {/* Toggle buttons */}
+      <div className="absolute top-5 right-5 z-20 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setShowCheckedIn((v) => !v)}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+            showCheckedIn
+              ? "bg-emerald-600 text-white"
+              : "bg-muted text-muted-foreground hover:text-foreground"
+          }`}
+          aria-label="Toggle checked in"
+        >
+          <UserCheck className="w-4 h-4" />
+          <span>Checked In</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowLeaderboard((v) => !v)}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+            showLeaderboard
+              ? "bg-[#1173F1] text-white"
+              : "bg-muted text-muted-foreground hover:text-foreground"
+          }`}
+          aria-label="Toggle leaderboard"
+        >
+          <Trophy className="w-4 h-4" />
+          <span>Leaders</span>
+        </button>
+      </div>
 
       {/* Main content */}
       <div
         className={`relative z-10 w-full flex items-center justify-center gap-12 transition-all duration-300 ${
-          showLeaderboard ? "max-w-3xl" : "max-w-sm"
+          bothPanels ? "max-w-5xl" : anyPanel ? "max-w-3xl" : "max-w-sm"
         }`}
       >
-        {/* Leaderboard panel */}
+        {/* Leaderboard panel (left) */}
         {showLeaderboard && (
           <div className="flex-1">
             <Leaderboard />
@@ -55,12 +77,18 @@ export default function KioskPage() {
         {/* PIN pad */}
         <div className="flex flex-col items-center gap-8 w-full max-w-sm shrink-0">
           <div className="text-center">
+            {milestone && (
+              <div className="mb-2 text-yellow-400 font-black leading-tight">
+                <p className="text-4xl">🏆 {milestone} 🏆</p>
+                <p className="text-3xl">Season Milestone!</p>
+              </div>
+            )}
             <h1 className="text-6xl font-bold tracking-tight">{teamName}</h1>
             <p className="mt-2 text-muted-foreground text-2xl">{today}</p>
           </div>
 
           <div className="flex flex-col items-center gap-3 w-full">
-            <PinPad />
+            <PinPad onMilestone={setMilestone} onAction={() => setCheckedInKey((k) => k + 1)} />
           </div>
 
           <a
@@ -70,6 +98,13 @@ export default function KioskPage() {
             Admin
           </a>
         </div>
+
+        {/* Checked In panel (right) */}
+        {showCheckedIn && (
+          <div className="flex-1">
+            <CheckedIn refreshKey={checkedInKey} />
+          </div>
+        )}
       </div>
     </main>
   );
