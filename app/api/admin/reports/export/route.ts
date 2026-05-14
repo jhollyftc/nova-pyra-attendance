@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyToken, COOKIE_NAME } from "@/lib/auth";
 import { getDb } from "@/lib/db";
+import { getCurrentSeason } from "@/lib/seasons";
 
 export async function GET(req: NextRequest) {
   const token = req.cookies.get(COOKIE_NAME)?.value;
@@ -16,8 +17,7 @@ export async function GET(req: NextRequest) {
   if (period === "month") {
     fromDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
   } else {
-    const seasonYear = now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1;
-    fromDate = new Date(seasonYear, 8, 1).toISOString();
+    fromDate = getCurrentSeason(now).start.toISOString();
   }
 
   const db = getDb();

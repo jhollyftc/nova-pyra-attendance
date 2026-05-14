@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { getDb } from "@/lib/db";
+import { getCurrentSeason } from "@/lib/seasons";
 
 function err(message: string, status: number) {
   return NextResponse.json({ message }, { status });
@@ -63,8 +64,8 @@ export async function POST(req: NextRequest) {
 
   // Season total (Sept 1 of current or previous year)
   const now = new Date();
-  const seasonYear = now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1;
-  const seasonStart = new Date(seasonYear, 8, 1).toISOString();
+  const season = getCurrentSeason(now);
+  const seasonStart = season.start.toISOString();
 
   const seasonRow = db.prepare(
     `SELECT SUM(total_minutes) AS total_minutes
