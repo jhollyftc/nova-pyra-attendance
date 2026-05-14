@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import { Delete, X } from "lucide-react";
+import { Delete, X, LogIn, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const PIN_LENGTH = 4;
@@ -14,12 +14,13 @@ type Phase =
   | { name: "loading" }
   | { name: "confirming"; studentName: string; action: "checkin" | "checkout" }
   | { name: "actioning"; studentName: string; action: "checkin" | "checkout" }
-  | { name: "result"; success: boolean; message: string; detail?: string; stats?: string };
+  | { name: "result"; success: boolean; action?: "checkin" | "checkout"; message: string; detail?: string; stats?: string };
 
 export default function PinPad() {
   const [pin, setPin] = useState("");
   const [phase, setPhase] = useState<Phase>({ name: "entering" });
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const enterReleasedRef = useRef(true);
 
   useEffect(() => {
     return () => {
@@ -167,7 +168,7 @@ const playClick = useCallback(() => {
       const data = await res.json();
       clearIdle();
       if (res.ok) playSuccess();
-      setPhase({ name: "result", success: res.ok, message: data.message, detail: data.detail, stats: data.stats });
+      setPhase({ name: "result", success: res.ok, action, message: data.message, detail: data.detail, stats: data.stats });
       if (!data.stats) {
         setTimeout(resetToEntering, RESULT_CLEAR_MS);
       }
@@ -181,12 +182,22 @@ const playClick = useCallback(() => {
     useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Enter" && phase.name === "confirming") {
+        enterReleasedRef.current = false;
         confirm();
+      } else if (e.key === "Enter" && phase.name === "result" && phase.stats && enterReleasedRef.current) {
+        resetToEntering();
       }
     };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === "Enter") enterReleasedRef.current = true;
+    };
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [phase, confirm]);
+    window.addEventListener("keyup", handleKeyUp);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+    };
+  }, [phase, confirm, resetToEntering]);
 
   // ── Confirmation screen ───────────────────────────────────
   if (phase.name === "confirming" || phase.name === "actioning") {
@@ -233,13 +244,18 @@ const playClick = useCallback(() => {
 
   // ── Result screen ─────────────────────────────────────────
   if (phase.name === "result") {
+    const isCheckout = phase.success && phase.action === "checkout";
     return (
       <div className="relative w-full max-w-xs">
         {phase.stats && (
           <button
             type="button"
             onClick={resetToEntering}
-            className="absolute -top-3 -right-3 z-10 flex items-center justify-center w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white/70 hover:text-white transition-all"
+            className={`absolute -top-3 -right-3 z-10 flex items-center justify-center w-8 h-8 rounded-full transition-all ${
+              isCheckout
+                ? "bg-[#07326A] hover:bg-[#07326A]/80 text-white"
+                : "bg-white/10 hover:bg-white/20 text-white/70 hover:text-white"
+            }`}
             aria-label="Dismiss"
           >
             <X className="w-4 h-4" />
@@ -247,16 +263,26 @@ const playClick = useCallback(() => {
         )}
         <div
           className={`flex flex-col items-center justify-center gap-3 p-8 rounded-2xl min-h-48 w-full text-center ${
-            phase.success ? "bg-[#07326A] text-white" : "bg-red-950 text-red-200"
+            !phase.success ? "bg-red-950 text-red-200"
+            : phase.action === "checkin" ? "bg-emerald-600 text-white"
+            : "bg-[#E6E6E6] text-[#07326A]"
           }`}
         >
-          <div className="text-5xl">{phase.success ? "✓" : "✗"}</div>
+          <div>
+            {!phase.success ? (
+              <span className="text-5xl">✗</span>
+            ) : phase.action === "checkin" ? (
+              <LogIn className="w-12 h-12" />
+            ) : (
+              <LogOut className="w-12 h-12" />
+            )}
+          </div>
           <p className="text-2xl font-bold leading-tight">{phase.message}</p>
           {phase.detail && (
-            <p className="text-lg text-[#E6E6E6]">{phase.detail}</p>
+            <p className={`text-lg ${isCheckout ? "text-[#07326A]/70" : "text-white/80"}`}>{phase.detail}</p>
           )}
           {phase.stats && (
-            <p className="text-base font-semibold text-[#1173F1]">{phase.stats}</p>
+            <p className={`text-base font-semibold ${isCheckout ? "text-[#07326A]" : "text-white/90"}`}>{phase.stats}</p>
           )}
         </div>
       </div>
