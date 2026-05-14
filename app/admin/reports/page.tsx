@@ -33,6 +33,19 @@ type SubteamRow = {
   hours: number;
 };
 
+type AdultSummary = {
+  student_id: string;
+  name: string;
+  role: string;
+  total_minutes: number;
+  session_count: number;
+};
+
+type AdultCategoryRow = {
+  role: string;
+  hours: number;
+};
+
 const CHART_COLORS = {
   bar: "#1173F1",
   line: "#1173F1",
@@ -66,6 +79,8 @@ export default function ReportsPage() {
   const [summaries, setSummaries] = useState<StudentSummary[]>([]);
   const [sessionTrend, setSessionTrend] = useState<SessionTrend[]>([]);
   const [subteamBreakdown, setSubteamBreakdown] = useState<SubteamRow[]>([]);
+  const [adultSummaries, setAdultSummaries] = useState<AdultSummary[]>([]);
+  const [adultCategoryBreakdown, setAdultCategoryBreakdown] = useState<AdultCategoryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedLabel, setSelectedLabel] = useState(CURRENT_SEASON_LABEL);
   const [exporting, setExporting] = useState(false);
@@ -88,6 +103,8 @@ export default function ReportsPage() {
       setSummaries(data.summaries ?? []);
       setSessionTrend(data.sessionTrend ?? []);
       setSubteamBreakdown(data.subteamBreakdown ?? []);
+      setAdultSummaries(data.adultSummaries ?? []);
+      setAdultCategoryBreakdown(data.adultCategoryBreakdown ?? []);
     }
     setLoading(false);
   }, [apiUrl]);
@@ -307,6 +324,46 @@ export default function ReportsPage() {
                 </TableBody>
               </Table>
             </div>
+          )}
+
+          {/* Adult Hours */}
+          {adultSummaries.length > 0 && (
+            <>
+              <div className="flex items-center gap-3 pt-2">
+                <h2 className="text-lg font-bold">Adult Hours</h2>
+                <div className="flex gap-3 text-sm text-muted-foreground">
+                  {adultCategoryBreakdown.map((c) => (
+                    <span key={c.role}>
+                      <span className="font-medium text-foreground">{c.hours}h</span> {c.role}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div className="rounded-lg border overflow-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Sessions</TableHead>
+                      <TableHead className="text-right">Hours</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {adultSummaries.map((a) => (
+                      <TableRow key={a.student_id}>
+                        <TableCell className="font-medium">{a.name}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline">{a.role}</Badge>
+                        </TableCell>
+                        <TableCell>{a.session_count}</TableCell>
+                        <TableCell className="text-right font-semibold">{toHours(a.total_minutes)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
           )}
         </>
       )}

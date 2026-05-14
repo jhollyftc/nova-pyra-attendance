@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
 import { toast } from "sonner";
 import {
   createStudent,
@@ -40,17 +41,23 @@ type Student = {
   active_status: number;
 };
 
+const MEMBER_TYPES = ["Student", "Mentor", "Coach", "Parent"] as const;
+const SUBTEAMS = ["Build", "CAD", "Code", "Documentation", "Outreach"] as const;
+const GRADES = ["7", "8", "9"] as const;
+
 const emptyForm = {
   first_name: "",
   last_name: "",
   display_name: "",
   grade: "",
   subteam: "",
-  role: "",
+  role: "Student",
   pin: "",
 };
 
 type DialogMode = "add" | "edit" | "reset_pin" | null;
+type SortKey = "name" | "grade" | "subteam" | "role";
+type SortDir = "asc" | "desc";
 
 export default function StudentsPage() {
   const [students, setStudents] = useState<Student[]>([]);
@@ -60,6 +67,8 @@ export default function StudentsPage() {
   const [form, setForm] = useState(emptyForm);
   const [submitting, setSubmitting] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  const [sortKey, setSortKey] = useState<SortKey>("name");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
 
   const fetchStudents = useCallback(async () => {
     const res = await fetch("/api/admin/students");
@@ -121,7 +130,7 @@ export default function StudentsPage() {
     } else {
       toast.success(
         dialogMode === "add"
-          ? "Student added."
+          ? "Member added."
           : dialogMode === "reset_pin"
           ? "PIN reset."
           : "Student updated."
@@ -147,14 +156,29 @@ export default function StudentsPage() {
   const displayName = (s: Student) =>
     s.display_name ?? `${s.first_name} ${s.last_name}`;
 
-  const visible = students.filter((s) =>
-    showArchived ? !s.active_status : s.active_status
-  );
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setSortKey(key); setSortDir("asc"); }
+  };
+
+  const visible = useMemo(() => {
+    const filtered = students.filter((s) =>
+      showArchived ? !s.active_status : s.active_status
+    );
+    return [...filtered].sort((a, b) => {
+      let av = "", bv = "";
+      if (sortKey === "name")    { av = displayName(a); bv = displayName(b); }
+      if (sortKey === "grade")   { av = a.grade ?? ""; bv = b.grade ?? ""; }
+      if (sortKey === "subteam") { av = a.subteam ?? ""; bv = b.subteam ?? ""; }
+      if (sortKey === "role")    { av = a.role ?? ""; bv = b.role ?? ""; }
+      return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+    });
+  }, [students, showArchived, sortKey, sortDir]);
 
   return (
     <div className="max-w-5xl space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Students</h1>
+        <h1 className="text-2xl font-bold">Members</h1>
         <div className="flex gap-2">
           <Button
             variant="outline"
@@ -164,7 +188,7 @@ export default function StudentsPage() {
             {showArchived ? "Show Active" : "Show Archived"}
           </Button>
           <Button size="sm" onClick={openAdd}>
-            Add Student
+            Add Member
           </Button>
         </div>
       </div>
@@ -173,17 +197,27 @@ export default function StudentsPage() {
         <p className="text-muted-foreground text-sm">Loading…</p>
       ) : visible.length === 0 ? (
         <p className="text-muted-foreground text-sm">
-          {showArchived ? "No archived students." : "No students yet. Add one!"}
+          {showArchived ? "No archived members." : "No members yet. Add one!"}
         </p>
       ) : (
         <div className="rounded-lg border overflow-auto">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Grade</TableHead>
-                <TableHead>Subteam</TableHead>
-                <TableHead>Role</TableHead>
+                {(["name", "grade", "subteam", "role"] as SortKey[]).map((key) => (
+                  <TableHead key={key}>
+                    <button
+                      type="button"
+                      onClick={() => handleSort(key)}
+                      className="flex items-center gap-1 hover:text-foreground transition-colors"
+                    >
+                      {key === "name" ? "Name" : key === "grade" ? "Grade" : key === "subteam" ? "Subteam" : "Member Type"}
+                      {sortKey === key
+                        ? sortDir === "asc" ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
+                        : <ChevronsUpDown className="w-3 h-3 opacity-40" />}
+                    </button>
+                  </TableHead>
+                ))}
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
@@ -225,7 +259,7 @@ export default function StudentsPage() {
           <DialogHeader>
             <DialogTitle>
               {dialogMode === "add"
-                ? "Add Student"
+                ? "Add Member"
                 : dialogMode === "reset_pin"
                 ? `Reset PIN — ${selected ? displayName(selected) : ""}`
                 : `Edit Student — ${selected ? displayName(selected) : ""}`}
@@ -272,29 +306,51 @@ export default function StudentsPage() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label>Grade</Label>
-                <Input
-                  placeholder="e.g. 10"
-                  value={form.grade}
-                  onChange={(e) => setForm({ ...form, grade: e.target.value })}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Subteam</Label>
-                <Input
-                  placeholder="e.g. Mechanical"
-                  value={form.subteam}
-                  onChange={(e) => setForm({ ...form, subteam: e.target.value })}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Role</Label>
-                <Input
-                  placeholder="e.g. Driver"
+                <Label>Member Type</Label>
+                <select
                   value={form.role}
-                  onChange={(e) => setForm({ ...form, role: e.target.value })}
-                />
+                  onChange={(e) => {
+                    const role = e.target.value;
+                    const isStudent = role === "Student";
+                    setForm({ ...form, role, grade: isStudent ? form.grade : "", subteam: isStudent ? form.subteam : "" });
+                  }}
+                  className="flex h-9 w-full rounded-md border border-input bg-background text-foreground px-3 py-1 text-sm shadow-sm"
+                >
+                  {MEMBER_TYPES.map((t) => (
+                    <option key={t} value={t} className="bg-background text-foreground">{t}</option>
+                  ))}
+                </select>
               </div>
+              {form.role === "Student" && (
+                <>
+                  <div className="space-y-1.5">
+                    <Label>Grade</Label>
+                    <select
+                      value={form.grade}
+                      onChange={(e) => setForm({ ...form, grade: e.target.value })}
+                      className="flex h-9 w-full rounded-md border border-input bg-background text-foreground px-3 py-1 text-sm shadow-sm"
+                    >
+                      <option value="" className="bg-background text-foreground">— Select —</option>
+                      {GRADES.map((g) => (
+                        <option key={g} value={g} className="bg-background text-foreground">{g}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Subteam</Label>
+                    <select
+                      value={form.subteam}
+                      onChange={(e) => setForm({ ...form, subteam: e.target.value })}
+                      className="flex h-9 w-full rounded-md border border-input bg-background text-foreground px-3 py-1 text-sm shadow-sm"
+                    >
+                      <option value="" className="bg-background text-foreground">— Select —</option>
+                      {SUBTEAMS.map((s) => (
+                        <option key={s} value={s} className="bg-background text-foreground">{s}</option>
+                      ))}
+                    </select>
+                  </div>
+                </>
+              )}
               {dialogMode === "add" && (
                 <div className="space-y-1.5 col-span-2">
                   <Label>PIN (4 digits) *</Label>

@@ -14,7 +14,7 @@ import {
 
 const navItems = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/admin/students", label: "Students", icon: Users },
+  { href: "/admin/students", label: "Members", icon: Users },
   { href: "/admin/sessions", label: "Sessions", icon: Calendar },
   { href: "/admin/attendance", label: "Attendance", icon: ClipboardList },
   { href: "/admin/reports", label: "Reports", icon: BarChart3 },

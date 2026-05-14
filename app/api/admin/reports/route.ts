@@ -45,6 +45,7 @@ export async function GET(req: NextRequest) {
      FROM attendance_records ar
      JOIN students s ON s.student_id = ar.student_id
      WHERE ar.status IN ('checked_out', 'manual_fixed')
+       AND s.role = 'Student'
        AND ar.check_in_time >= ?
        AND ar.check_in_time <= ?
      GROUP BY s.student_id
@@ -89,6 +90,7 @@ export async function GET(req: NextRequest) {
      FROM attendance_records ar
      JOIN students s ON s.student_id = ar.student_id
      WHERE ar.status IN ('checked_out', 'manual_fixed')
+       AND s.role = 'Student'
        AND ar.check_in_time >= ?
        AND ar.check_in_time <= ?
      GROUP BY subteam
@@ -100,5 +102,50 @@ export async function GET(req: NextRequest) {
     hours: parseFloat((r.total_minutes / 60).toFixed(1)),
   }));
 
-  return NextResponse.json({ summaries, sessionTrend, subteamBreakdown });
+  // Per-adult totals (Mentor, Coach, Parent)
+  const adultRows = db.prepare(
+    `SELECT s.student_id, s.display_name, s.first_name, s.last_name, s.role,
+            SUM(ar.total_minutes) AS total_minutes,
+            COUNT(DISTINCT ar.session_id) AS session_count
+     FROM attendance_records ar
+     JOIN students s ON s.student_id = ar.student_id
+     WHERE ar.status IN ('checked_out', 'manual_fixed')
+       AND s.role IN ('Mentor', 'Coach', 'Parent')
+       AND ar.check_in_time >= ?
+       AND ar.check_in_time <= ?
+     GROUP BY s.student_id
+     ORDER BY s.role ASC, total_minutes DESC`
+  ).all(fromDate, toDate) as {
+    student_id: string; display_name: string | null;
+    first_name: string; last_name: string;
+    role: string; total_minutes: number; session_count: number;
+  }[];
+
+  const adultSummaries = adultRows.map((r) => ({
+    student_id: r.student_id,
+    name: r.display_name ?? `${r.first_name} ${r.last_name}`,
+    role: r.role,
+    total_minutes: r.total_minutes ?? 0,
+    session_count: r.session_count,
+  }));
+
+  // Hours by adult category
+  const adultCategoryRows = db.prepare(
+    `SELECT s.role, SUM(ar.total_minutes) AS total_minutes
+     FROM attendance_records ar
+     JOIN students s ON s.student_id = ar.student_id
+     WHERE ar.status IN ('checked_out', 'manual_fixed')
+       AND s.role IN ('Mentor', 'Coach', 'Parent')
+       AND ar.check_in_time >= ?
+       AND ar.check_in_time <= ?
+     GROUP BY s.role
+     ORDER BY total_minutes DESC`
+  ).all(fromDate, toDate) as { role: string; total_minutes: number }[];
+
+  const adultCategoryBreakdown = adultCategoryRows.map((r) => ({
+    role: r.role,
+    hours: parseFloat((r.total_minutes / 60).toFixed(1)),
+  }));
+
+  return NextResponse.json({ summaries, sessionTrend, subteamBreakdown, adultSummaries, adultCategoryBreakdown });
 }
