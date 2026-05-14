@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { Delete, X, LogIn, LogOut } from "lucide-react";
+import confetti from "canvas-confetti";
 import { Button } from "@/components/ui/button";
 
 const PIN_LENGTH = 4;
@@ -118,6 +119,18 @@ const playClick = useCallback(() => {
   osc.stop(ctx.currentTime + 0.4);
 }, []);
 
+  const playFireworks = useCallback(() => {
+    const colors = ["#1173F1", "#0A4FB3", "#E6E6E6", "#ffffff", "#fbbf24"];
+    const end = Date.now() + 2800;
+
+    (function frame() {
+      confetti({ particleCount: 5, angle: 60, spread: 50, origin: { x: 0.05, y: 1 }, colors, startVelocity: 50 });
+      confetti({ particleCount: 5, angle: 120, spread: 50, origin: { x: 0.95, y: 1 }, colors, startVelocity: 50 });
+      confetti({ particleCount: 3, spread: 360, origin: { x: Math.random() * 0.6 + 0.2, y: Math.random() * 0.4 }, colors, startVelocity: 25, ticks: 80 });
+      if (Date.now() < end) requestAnimationFrame(frame);
+    })();
+  }, []);
+
   const pressDigit = useCallback(
     (d: string) => {
       if (phase.name !== "entering") return;
@@ -168,6 +181,7 @@ const playClick = useCallback(() => {
       const data = await res.json();
       clearIdle();
       if (res.ok) playSuccess();
+      if (data.milestone) playFireworks();
       setPhase({ name: "result", success: res.ok, action, message: data.message, detail: data.detail, stats: data.stats, milestone: data.milestone });
       if (!data.stats) {
         setTimeout(resetToEntering, RESULT_CLEAR_MS);
@@ -177,7 +191,7 @@ const playClick = useCallback(() => {
       setPhase({ name: "result", success: false, message: "Connection error. Try again." });
       setTimeout(resetToEntering, RESULT_CLEAR_MS);
     }
-  }, [phase, pin, resetToEntering, clearIdle, playSuccess]);
+  }, [phase, pin, resetToEntering, clearIdle, playSuccess, playFireworks]);
 
     useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
