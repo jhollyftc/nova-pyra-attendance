@@ -14,7 +14,7 @@ type Phase =
   | { name: "loading" }
   | { name: "confirming"; studentName: string; action: "checkin" | "checkout" }
   | { name: "actioning"; studentName: string; action: "checkin" | "checkout" }
-  | { name: "result"; success: boolean; action?: "checkin" | "checkout"; message: string; detail?: string; stats?: string };
+  | { name: "result"; success: boolean; action?: "checkin" | "checkout"; message: string; detail?: string; stats?: string; milestone?: string };
 
 export default function PinPad() {
   const [pin, setPin] = useState("");
@@ -168,7 +168,7 @@ const playClick = useCallback(() => {
       const data = await res.json();
       clearIdle();
       if (res.ok) playSuccess();
-      setPhase({ name: "result", success: res.ok, action, message: data.message, detail: data.detail, stats: data.stats });
+      setPhase({ name: "result", success: res.ok, action, message: data.message, detail: data.detail, stats: data.stats, milestone: data.milestone });
       if (!data.stats) {
         setTimeout(resetToEntering, RESULT_CLEAR_MS);
       }
@@ -283,6 +283,9 @@ const playClick = useCallback(() => {
           )}
           {phase.stats && (
             <p className={`text-base font-semibold ${isCheckout ? "text-[#07326A]" : "text-white/90"}`}>{phase.stats}</p>
+          )}
+          {phase.milestone && (
+            <p className="text-base font-bold text-yellow-500 mt-1">🏆 {phase.milestone} Season Milestone!</p>
           )}
         </div>
       </div>

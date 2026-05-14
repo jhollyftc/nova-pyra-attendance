@@ -76,9 +76,15 @@ export async function POST(req: NextRequest) {
   const seasonMins = seasonRow?.total_minutes ?? 0;
   const seasonHours = (seasonMins / 60).toFixed(1);
 
+  const MILESTONE_MINS = [10, 25, 50, 75, 100, 150, 200].map((h) => h * 60);
+  const prevSeasonMins = seasonMins - totalMinutes;
+  const hit = MILESTONE_MINS.filter((m) => prevSeasonMins < m && m <= seasonMins);
+  const milestone = hit.length ? `${hit[hit.length - 1] / 60} hrs` : undefined;
+
   return NextResponse.json({
     message: `Great work, ${displayName}!`,
     detail: `Checked out at ${timeStr}`,
     stats: `Session: ${duration}  ·  Season: ${seasonHours} hrs`,
+    milestone,
   });
 }
