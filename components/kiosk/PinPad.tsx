@@ -5,8 +5,9 @@ import { Delete, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const PIN_LENGTH = 4;
-const RESULT_CLEAR_MS = 6000;
-const IDLE_CLEAR_MS = 12000;
+const ERROR_CLEAR_MS = 500;
+const RESULT_CLEAR_MS = 4000;
+const IDLE_CLEAR_MS = 10000;
 
 type Phase =
   | { name: "entering" }
@@ -43,6 +44,21 @@ export default function PinPad() {
     idleTimerRef.current = setTimeout(resetToEntering, IDLE_CLEAR_MS);
   }, [resetToEntering, clearIdle]);
 
+  const playError = useCallback(() => {
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(100, ctx.currentTime);
+    osc.frequency.linearRampToValueAtTime(150, ctx.currentTime + 0.4);
+    gain.gain.setValueAtTime(0.2, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.4);
+    }, []);
+
   const lookup = useCallback(async (enteredPin: string) => {
     setPhase({ name: "loading" });
     try {
@@ -54,8 +70,9 @@ export default function PinPad() {
       const data = await res.json();
       if (!res.ok) {
         clearIdle();
+        playError();
         setPhase({ name: "result", success: false, message: data.message });
-        setTimeout(resetToEntering, RESULT_CLEAR_MS);
+        setTimeout(resetToEntering, ERROR_CLEAR_MS);
       } else {
         setPhase({
           name: "confirming",
@@ -69,11 +86,41 @@ export default function PinPad() {
       setPhase({ name: "result", success: false, message: "Connection error. Try again." });
       setTimeout(resetToEntering, RESULT_CLEAR_MS);
     }
-  }, [resetToEntering, resetIdle, clearIdle]);
+  }, [resetToEntering, resetIdle, clearIdle, playError]);
+
+const playClick = useCallback(() => {
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = 200;
+    gain.gain.setValueAtTime(0.1, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.1);
+  }, []);
+
+  const playSuccess = useCallback(() => {
+  const ctx = new AudioContext();
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(400, ctx.currentTime);
+  osc.frequency.setValueAtTime(600, ctx.currentTime + 0.1);
+  osc.frequency.setValueAtTime(800, ctx.currentTime + 0.2);
+  gain.gain.setValueAtTime(0.2, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+  osc.start(ctx.currentTime);
+  osc.stop(ctx.currentTime + 0.4);
+}, []);
 
   const pressDigit = useCallback(
     (d: string) => {
       if (phase.name !== "entering") return;
+      playClick();
       const next = pin + d;
       setPin(next);
       resetIdle();
@@ -81,14 +128,30 @@ export default function PinPad() {
         lookup(next);
       }
     },
-    [pin, phase, lookup, resetIdle]
+    [pin, phase, lookup, resetIdle, playClick]
   );
 
   const backspace = useCallback(() => {
     if (phase.name !== "entering") return;
+    playClick();
     setPin((p) => p.slice(0, -1));
     resetIdle();
-  }, [phase, resetIdle]);
+  }, [phase, resetIdle, playClick]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key >= "0" && e.key <= "9") {
+        pressDigit(e.key);
+      } else if (e.code >= "Numpad0" && e.code <= "Numpad9") {
+        pressDigit(e.key);
+      } else if (e.key === "Backspace") {
+        backspace();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [pressDigit, backspace]);
 
   const confirm = useCallback(async () => {
     if (phase.name !== "confirming") return;
@@ -103,6 +166,7 @@ export default function PinPad() {
       });
       const data = await res.json();
       clearIdle();
+      if (res.ok) playSuccess();
       setPhase({ name: "result", success: res.ok, message: data.message, detail: data.detail, stats: data.stats });
       if (!data.stats) {
         setTimeout(resetToEntering, RESULT_CLEAR_MS);
@@ -112,7 +176,17 @@ export default function PinPad() {
       setPhase({ name: "result", success: false, message: "Connection error. Try again." });
       setTimeout(resetToEntering, RESULT_CLEAR_MS);
     }
-  }, [phase, pin, resetToEntering, clearIdle]);
+  }, [phase, pin, resetToEntering, clearIdle, playSuccess]);
+
+    useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Enter" && phase.name === "confirming") {
+        confirm();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [phase, confirm]);
 
   // ── Confirmation screen ───────────────────────────────────
   if (phase.name === "confirming" || phase.name === "actioning") {
@@ -121,7 +195,7 @@ export default function PinPad() {
     return (
       <div className="flex flex-col items-center gap-6 w-full max-w-xs">
         <div className="text-center space-y-1">
-          <p className="text-2xl font-bold">{phase.studentName}</p>
+          <p className="text-4xl font-bold">{phase.studentName}</p>
           <p className="text-muted-foreground">
             {isCheckout
               ? "You're currently checked in."
@@ -192,6 +266,7 @@ export default function PinPad() {
   // ── PIN entry screen ──────────────────────────────────────
   const isLoading = phase.name === "loading";
 
+  
   const dots = Array.from({ length: PIN_LENGTH }, (_, i) => (
     <div
       key={i}
@@ -203,6 +278,7 @@ export default function PinPad() {
     />
   ));
 
+  
   const digitRows = [
     ["1", "2", "3"],
     ["4", "5", "6"],
@@ -212,7 +288,10 @@ export default function PinPad() {
 
   return (
     <div className={`flex flex-col items-center gap-6 transition-opacity ${isLoading ? "opacity-50 pointer-events-none" : ""}`}>
-      <div className="flex gap-4 h-8 items-center">{dots}</div>
+      <p className="text-lg text-muted-foreground uppercase tracking-widest font-medium">
+        Enter PIN
+      </p>
+      <div className="flex gap-4 h-2 items-center">{dots}</div>
       <div className="grid grid-cols-3 gap-3">
         {digitRows.flat().map((key, idx) => {
           if (key === "") return <div key={idx} />;
@@ -223,7 +302,7 @@ export default function PinPad() {
                 key={idx}
                 onClick={backspace}
                 disabled={pin.length === 0}
-                className="flex items-center justify-center w-20 h-20 rounded-2xl text-xl font-semibold bg-muted hover:bg-muted/70 disabled:opacity-30 active:scale-95 transition-all border-2 border-white/30"
+                className="flex items-center justify-center w-20 h-20 rounded-2xl text-xl font-semibold bg-muted hover:bg-muted/70 disabled:opacity-30 active:bg-[#FF0000]/90 transition-all border-2 border-white/30"
               >
                 <Delete className="w-5 h-5" />
               </button>
@@ -233,7 +312,7 @@ export default function PinPad() {
               type="button"
               key={idx}
               onClick={() => pressDigit(key)}
-              className="flex items-center justify-center w-20 h-20 rounded-2xl text-2xl font-semibold bg-muted hover:bg-muted/70 active:scale-95 transition-all select-none border-2 border-white/30"
+              className="flex items-center justify-center w-20 h-20 rounded-2xl text-2xl font-semibold bg-muted hover:bg-muted/70 active:bg-[#0088FF]/90 transition-all select-none border-2 border-white/30"
             >
               {key}
             </button>
