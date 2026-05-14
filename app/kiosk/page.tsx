@@ -21,20 +21,18 @@ export default function KioskPage() {
       />
       <div className="relative z-10 w-full max-w-sm flex flex-col items-center gap-8">
         <div className="text-center">
-          <h1 className="text-5xl font-bold tracking-tight">{teamName}</h1>
-          <p className="mt-2 text-muted-foreground text-lg">{today}</p>
+          <h1 className="text-6xl font-bold tracking-tight">{teamName}</h1>
+          <p className="mt-2 text-muted-foreground text-2xl">{today}</p>
         </div>
 
         <div className="flex flex-col items-center gap-3 w-full">
-          <p className="text-sm text-muted-foreground uppercase tracking-widest font-medium">
-            Enter PIN
-          </p>
+        
           <PinPad />
         </div>
 
         <a
           href="/admin"
-          className="text-sm text-muted-foreground/60 hover:text-muted-foreground transition-colors mt-4"
+          className="text-lg text-muted-foreground/60 hover:text-muted-foreground transition-colors mt-4"
         >
           Admin
         </a>
