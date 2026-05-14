@@ -50,6 +50,7 @@ export default function LoginPage() {
               <Input
                 id="password"
                 type="password"
+                autoFocus
                 autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
