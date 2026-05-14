@@ -31,8 +31,8 @@ export async function createStudent(data: StudentFormData) {
   const db = getDb();
 
   db.prepare(
-    `INSERT INTO students (student_id, first_name, last_name, display_name, grade, subteam, role, pin_hash, active_status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`
+    `INSERT INTO students (student_id, first_name, last_name, display_name, grade, subteam, role, pin_hash, pin, active_status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
   ).run(
     randomUUID(),
     data.first_name.trim(),
@@ -41,7 +41,8 @@ export async function createStudent(data: StudentFormData) {
     data.grade.trim() || null,
     data.subteam.trim() || null,
     data.role.trim() || null,
-    pin_hash
+    pin_hash,
+    data.pin
   );
 
   revalidatePath("/admin/students");
@@ -80,8 +81,8 @@ export async function resetPin(studentId: string, pin: string) {
   const pin_hash = await bcrypt.hash(pin, 10);
   const db = getDb();
   db.prepare(
-    `UPDATE students SET pin_hash = ?, updated_at = datetime('now') WHERE student_id = ?`
-  ).run(pin_hash, studentId);
+    `UPDATE students SET pin_hash = ?, pin = ?, updated_at = datetime('now') WHERE student_id = ?`
+  ).run(pin_hash, pin, studentId);
 
   return { success: true };
 }
@@ -105,6 +106,28 @@ export async function restoreStudent(studentId: string) {
   db.prepare(
     `UPDATE students SET active_status = 1, updated_at = datetime('now') WHERE student_id = ?`
   ).run(studentId);
+
+  revalidatePath("/admin/students");
+  return { success: true };
+}
+
+export async function getAttendanceCount(studentId: string) {
+  if (!await checkAuth()) return { error: "Unauthorized." };
+
+  const db = getDb();
+  const row = db
+    .prepare(`SELECT COUNT(*) AS count FROM attendance_records WHERE student_id = ?`)
+    .get(studentId) as { count: number };
+
+  return { count: row.count };
+}
+
+export async function deleteStudent(studentId: string) {
+  if (!await checkAuth()) return { error: "Unauthorized." };
+
+  const db = getDb();
+  db.prepare(`DELETE FROM attendance_records WHERE student_id = ?`).run(studentId);
+  db.prepare(`DELETE FROM students WHERE student_id = ?`).run(studentId);
 
   revalidatePath("/admin/students");
   return { success: true };

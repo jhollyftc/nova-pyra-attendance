@@ -11,8 +11,16 @@ export function getDb(): Database.Database {
     g._db.pragma("journal_mode = WAL");
     g._db.pragma("foreign_keys = ON");
     initSchema(g._db);
+    migrate(g._db);
   }
   return g._db;
+}
+
+function migrate(db: Database.Database) {
+  const cols = db.prepare("PRAGMA table_info(students)").all() as { name: string }[];
+  if (!cols.some((c) => c.name === "pin")) {
+    db.exec("ALTER TABLE students ADD COLUMN pin TEXT");
+  }
 }
 
 function initSchema(db: Database.Database) {

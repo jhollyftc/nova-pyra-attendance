@@ -110,7 +110,7 @@ export async function GET(req: NextRequest) {
      FROM attendance_records ar
      JOIN students s ON s.student_id = ar.student_id
      WHERE ar.status IN ('checked_out', 'manual_fixed')
-       AND s.role IN ('Mentor', 'Coach', 'Parent')
+       AND s.role IN ('Mentor', 'Coach', 'Parent', 'Student Mentor')
        AND ar.check_in_time >= ?
        AND ar.check_in_time <= ?
      GROUP BY s.student_id
@@ -135,7 +135,7 @@ export async function GET(req: NextRequest) {
      FROM attendance_records ar
      JOIN students s ON s.student_id = ar.student_id
      WHERE ar.status IN ('checked_out', 'manual_fixed')
-       AND s.role IN ('Mentor', 'Coach', 'Parent')
+       AND s.role IN ('Mentor', 'Coach', 'Parent', 'Student Mentor')
        AND ar.check_in_time >= ?
        AND ar.check_in_time <= ?
      GROUP BY s.role

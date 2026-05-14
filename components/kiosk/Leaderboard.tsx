@@ -19,11 +19,18 @@ function lerp(a: [number, number, number], b: [number, number, number], t: numbe
   ];
 }
 
+function bgLuminance(rgb: [number, number, number]): number {
+  const lin = (c: number) => { const s = c / 255; return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4); };
+  return 0.2126 * lin(rgb[0]) + 0.7152 * lin(rgb[1]) + 0.0722 * lin(rgb[2]);
+}
+
 function gradientStyle(index: number, total: number): React.CSSProperties {
   const t = total > 1 ? index / (total - 1) : 0;
   const half = t <= 0.5 ? t / 0.5 : (t - 0.5) / 0.5;
-  const bg   = t <= 0.5 ? lerp(SILVER, MID_BLUE,  half) : lerp(MID_BLUE, DARK_BLUE, half);
-  const text = t <= 0.5 ? lerp(NAVY_TEXT, WHITE,   half) : WHITE;
+  const bg   = t <= 0.5 ? lerp(SILVER, MID_BLUE, half) : lerp(MID_BLUE, DARK_BLUE, half);
+  // Pick whichever text color gives higher contrast against this background
+  const lum  = bgLuminance(bg);
+  const text = lum > 0.4 ? NAVY_TEXT : WHITE;
   return {
     backgroundColor: `rgb(${bg[0]},${bg[1]},${bg[2]})`,
     color: `rgb(${text[0]},${text[1]},${text[2]})`,
