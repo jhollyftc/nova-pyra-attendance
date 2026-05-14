@@ -11,6 +11,7 @@ import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip,
   LineChart, Line, CartesianGrid,
 } from "recharts";
+import { getAllSeasons, getCurrentSeason } from "@/lib/seasons";
 
 type StudentSummary = {
   student_id: string;
@@ -45,17 +46,43 @@ const tooltipStyle = {
   color: "#f9fafb",
 };
 
+// Build the option list once (newest season first, then "This Month")
+const now = new Date();
+const SEASON_OPTIONS = [
+  ...getAllSeasons().map((s) => ({
+    label: s.name,
+    from: s.start.toISOString(),
+    to: s.end.toISOString(),
+  })),
+  {
+    label: "This Month",
+    from: new Date(now.getFullYear(), now.getMonth(), 1).toISOString(),
+    to: null as string | null,
+  },
+];
+const CURRENT_SEASON_LABEL = getCurrentSeason(now).name;
+
 export default function ReportsPage() {
   const [summaries, setSummaries] = useState<StudentSummary[]>([]);
   const [sessionTrend, setSessionTrend] = useState<SessionTrend[]>([]);
   const [subteamBreakdown, setSubteamBreakdown] = useState<SubteamRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [period, setPeriod] = useState<"month" | "season">("season");
+  const [selectedLabel, setSelectedLabel] = useState(CURRENT_SEASON_LABEL);
   const [exporting, setExporting] = useState(false);
+
+  const selected = SEASON_OPTIONS.find((o) => o.label === selectedLabel) ?? SEASON_OPTIONS[0];
+
+  const apiUrl = useCallback((base: string) => {
+    const url = new URL(base, "http://x");
+    url.searchParams.set("from", selected.from);
+    if (selected.to) url.searchParams.set("to", selected.to);
+    url.searchParams.set("label", selected.label);
+    return url.pathname + url.search;
+  }, [selected]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const res = await fetch(`/api/admin/reports?period=${period}`);
+    const res = await fetch(apiUrl("/api/admin/reports"));
     if (res.ok) {
       const data = await res.json();
       setSummaries(data.summaries ?? []);
@@ -63,7 +90,7 @@ export default function ReportsPage() {
       setSubteamBreakdown(data.subteamBreakdown ?? []);
     }
     setLoading(false);
-  }, [period]);
+  }, [apiUrl]);
 
   useEffect(() => {
     fetchData();
@@ -71,7 +98,7 @@ export default function ReportsPage() {
 
   const exportCsv = async () => {
     setExporting(true);
-    const res = await fetch(`/api/admin/reports/export?period=${period}`);
+    const res = await fetch(apiUrl("/api/admin/reports/export"));
     if (!res.ok) { setExporting(false); return; }
     const blob = await res.blob();
     const a = document.createElement("a");
@@ -90,7 +117,6 @@ export default function ReportsPage() {
   const totalHours = summaries.reduce((s, r) => s + r.total_minutes, 0) / 60;
   const avgHours = totalStudents ? totalHours / totalStudents : 0;
 
-  // Format session date for trend chart x-axis
   const trendData = sessionTrend.map((s) => ({
     label: new Date(s.session_date + "T12:00:00").toLocaleDateString("en-US", {
       month: "short", day: "numeric",
@@ -99,7 +125,6 @@ export default function ReportsPage() {
     name: s.session_name,
   }));
 
-  // Hours by student for horizontal bar chart
   const studentBarData = summaries.map((s) => ({
     name: s.name,
     hours: parseFloat(toHours(s.total_minutes)),
@@ -113,20 +138,15 @@ export default function ReportsPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Reports</h1>
         <div className="flex gap-2 items-center">
-          <div className="flex rounded-lg border overflow-hidden">
-            <button
-              className={`px-3 py-1.5 text-sm transition-colors ${period === "season" ? "bg-foreground text-background" : "hover:bg-muted"}`}
-              onClick={() => setPeriod("season")}
-            >
-              Season
-            </button>
-            <button
-              className={`px-3 py-1.5 text-sm transition-colors ${period === "month" ? "bg-foreground text-background" : "hover:bg-muted"}`}
-              onClick={() => setPeriod("month")}
-            >
-              This Month
-            </button>
-          </div>
+          <select
+            value={selectedLabel}
+            onChange={(e) => setSelectedLabel(e.target.value)}
+            className="rounded-lg border border-border bg-background text-foreground text-sm px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            {SEASON_OPTIONS.map((o) => (
+              <option key={o.label} value={o.label}>{o.label}</option>
+            ))}
+          </select>
           <Button size="sm" onClick={exportCsv} disabled={exporting || loading}>
             {exporting ? "Exporting…" : "Export CSV"}
           </Button>
@@ -165,7 +185,6 @@ export default function ReportsPage() {
         <p className="text-muted-foreground text-sm">Loading…</p>
       ) : (
         <>
-          {/* Session attendance trend */}
           {trendData.length > 0 && (
             <Card>
               <CardHeader className="pb-2">
@@ -196,9 +215,7 @@ export default function ReportsPage() {
             </Card>
           )}
 
-          {/* Hours by student + Subteam breakdown */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            {/* Hours by student — horizontal bar */}
             {studentBarData.length > 0 && (
               <Card className="lg:col-span-2">
                 <CardHeader className="pb-2">
@@ -229,7 +246,6 @@ export default function ReportsPage() {
               </Card>
             )}
 
-            {/* Subteam breakdown */}
             {subteamBreakdown.length > 0 && (
               <Card>
                 <CardHeader className="pb-2">
@@ -260,7 +276,6 @@ export default function ReportsPage() {
             )}
           </div>
 
-          {/* Student table */}
           {summaries.length === 0 ? (
             <p className="text-muted-foreground text-sm">No attendance data for this period.</p>
           ) : (

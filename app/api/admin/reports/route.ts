@@ -3,6 +3,8 @@ import { verifyToken, COOKIE_NAME } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { getCurrentSeason } from "@/lib/seasons";
 
+const FAR_FUTURE = "9999-12-31T23:59:59.999Z";
+
 export async function GET(req: NextRequest) {
   const token = req.cookies.get(COOKIE_NAME)?.value;
   if (!token || !await verifyToken(token)) {
@@ -10,15 +12,28 @@ export async function GET(req: NextRequest) {
   }
 
   const { searchParams } = new URL(req.url);
+  const fromParam = searchParams.get("from");
+  const toParam = searchParams.get("to");
   const period = searchParams.get("period") ?? "season";
 
   const now = new Date();
   let fromDate: string;
-  if (period === "month") {
+  let toDate: string;
+
+  if (fromParam) {
+    fromDate = fromParam;
+    toDate = toParam ?? FAR_FUTURE;
+  } else if (period === "month") {
     fromDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    toDate = FAR_FUTURE;
   } else {
-    fromDate = getCurrentSeason(now).start.toISOString();
+    const season = getCurrentSeason(now);
+    fromDate = season.start.toISOString();
+    toDate = season.end.toISOString();
   }
+
+  const fromDay = fromDate.split("T")[0];
+  const toDay = toDate.split("T")[0];
 
   const db = getDb();
 
@@ -31,9 +46,10 @@ export async function GET(req: NextRequest) {
      JOIN students s ON s.student_id = ar.student_id
      WHERE ar.status IN ('checked_out', 'manual_fixed')
        AND ar.check_in_time >= ?
+       AND ar.check_in_time <= ?
      GROUP BY s.student_id
      ORDER BY total_minutes DESC`
-  ).all(fromDate) as {
+  ).all(fromDate, toDate) as {
     student_id: string; display_name: string | null;
     first_name: string; last_name: string;
     grade: string | null; subteam: string | null;
@@ -59,9 +75,10 @@ export async function GET(req: NextRequest) {
        AND ar.status IN ('checked_out', 'manual_fixed', 'missing_checkout', 'checked_in')
      WHERE sess.status IN ('active', 'ended')
        AND sess.session_date >= ?
+       AND sess.session_date <= ?
      GROUP BY sess.session_id
      ORDER BY sess.session_date ASC`
-  ).all(fromDate.split("T")[0]) as {
+  ).all(fromDay, toDay) as {
     session_name: string; session_date: string; student_count: number;
   }[];
 
@@ -73,9 +90,10 @@ export async function GET(req: NextRequest) {
      JOIN students s ON s.student_id = ar.student_id
      WHERE ar.status IN ('checked_out', 'manual_fixed')
        AND ar.check_in_time >= ?
+       AND ar.check_in_time <= ?
      GROUP BY subteam
      ORDER BY total_minutes DESC`
-  ).all(fromDate) as { subteam: string; total_minutes: number }[];
+  ).all(fromDate, toDate) as { subteam: string; total_minutes: number }[];
 
   const subteamBreakdown = subteamRows.map((r) => ({
     subteam: r.subteam,

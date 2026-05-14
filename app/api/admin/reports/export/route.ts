@@ -3,6 +3,8 @@ import { verifyToken, COOKIE_NAME } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { getCurrentSeason } from "@/lib/seasons";
 
+const FAR_FUTURE = "9999-12-31T23:59:59.999Z";
+
 export async function GET(req: NextRequest) {
   const token = req.cookies.get(COOKIE_NAME)?.value;
   if (!token || !await verifyToken(token)) {
@@ -10,14 +12,29 @@ export async function GET(req: NextRequest) {
   }
 
   const { searchParams } = new URL(req.url);
+  const fromParam = searchParams.get("from");
+  const toParam = searchParams.get("to");
+  const labelParam = searchParams.get("label");
   const period = searchParams.get("period") ?? "season";
 
   const now = new Date();
   let fromDate: string;
-  if (period === "month") {
+  let toDate: string;
+  let label: string;
+
+  if (fromParam) {
+    fromDate = fromParam;
+    toDate = toParam ?? FAR_FUTURE;
+    label = labelParam ?? "custom";
+  } else if (period === "month") {
     fromDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    toDate = FAR_FUTURE;
+    label = "this-month";
   } else {
-    fromDate = getCurrentSeason(now).start.toISOString();
+    const season = getCurrentSeason(now);
+    fromDate = season.start.toISOString();
+    toDate = season.end.toISOString();
+    label = season.name;
   }
 
   const db = getDb();
@@ -29,10 +46,11 @@ export async function GET(req: NextRequest) {
        JOIN students s ON s.student_id = ar.student_id
        WHERE ar.status IN ('checked_out', 'manual_fixed')
          AND ar.check_in_time >= ?
+         AND ar.check_in_time <= ?
        GROUP BY s.student_id
        ORDER BY total_minutes DESC`
     )
-    .all(fromDate) as {
+    .all(fromDate, toDate) as {
       display_name: string | null;
       first_name: string;
       last_name: string;
@@ -50,7 +68,8 @@ export async function GET(req: NextRequest) {
     })
     .join("\r\n");
 
-  const filename = `nova-pyra-attendance-${period}-${now.toISOString().split("T")[0]}.csv`;
+  const safeLabel = label.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
+  const filename = `nova-pyra-${safeLabel}-${now.toISOString().split("T")[0]}.csv`;
 
   return new NextResponse(header + body, {
     headers: {
