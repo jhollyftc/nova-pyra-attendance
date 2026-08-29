@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "next dev --webpack",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "hash": "node -e \"console.log(require('bcryptjs').hashSync(process.argv[1],10))\"",
+    "verify": "node -e \"console.log(require('bcryptjs').compareSync(process.argv[1],process.argv[2]))\""
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
