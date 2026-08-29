@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
-import { getDb } from "@/lib/db";
+import { checkOutRecord } from "@/lib/attendance";
 
 function err(message: string, status: number) {
   return NextResponse.json({ message }, { status });
@@ -18,33 +18,14 @@ export async function POST(req: NextRequest) {
   const ok = await bcrypt.compare(body.password as string, hash);
   if (!ok) return err("Incorrect password.", 401);
 
-  const db = getDb();
+  // An explicit checkOutTime back-dates a forgotten check-out; the helper
+  // validates the range and flags the record when it is a real adjustment.
+  const at = body.checkOutTime ? new Date(body.checkOutTime as string) : undefined;
+  const result = checkOutRecord(body.attendanceId as string, "kiosk", at);
+  if (!result.ok) return err(result.message, result.status);
 
-  const record = db
-    .prepare(
-      `SELECT ar.attendance_id, ar.check_in_time, ar.status,
-              COALESCE(s.display_name, s.first_name) AS name
-       FROM attendance_records ar
-       JOIN students s ON s.student_id = ar.student_id
-       WHERE ar.attendance_id = ?`
-    )
-    .get(body.attendanceId as string) as
-    | { attendance_id: string; check_in_time: string; status: string; name: string }
-    | undefined;
-
-  if (!record) return err("Record not found.", 404);
-  if (record.status !== "checked_in") return err("Not currently checked in.", 409);
-
-  const checkOutTime = new Date();
-  const totalMinutes = Math.round(
-    (checkOutTime.getTime() - new Date(record.check_in_time).getTime()) / 60000
-  );
-
-  db.prepare(
-    `UPDATE attendance_records
-     SET check_out_time = ?, total_minutes = ?, status = 'checked_out', updated_at = datetime('now')
-     WHERE attendance_id = ?`
-  ).run(checkOutTime.toISOString(), totalMinutes, record.attendance_id);
-
-  return NextResponse.json({ message: `${record.name} checked out.` });
+  return NextResponse.json({
+    message: `${result.name} checked out.`,
+    adjusted: result.adjusted,
+  });
 }

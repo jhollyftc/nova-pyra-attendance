@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { toDateTimeLocal } from "@/lib/buildDay";
 import {
   Select,
   SelectContent,
@@ -28,6 +29,14 @@ type Session = {
   session_type: string;
   actual_start_time: string | null;
   status: string;
+};
+
+type SyncStatus = {
+  last_attempt_at: string | null;
+  last_success_at: string | null;
+  last_error: string | null;
+  last_record_count: number | null;
+  configured: boolean;
 };
 
 type AttendanceRow = {
@@ -55,6 +64,12 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [startOpen, setStartOpen] = useState(false);
   const [endingSession, setEndingSession] = useState(false);
+  const [checkoutRow, setCheckoutRow] = useState<AttendanceRow | null>(null);
+  const [checkingOut, setCheckingOut] = useState(false);
+  const [checkoutTime, setCheckoutTime] = useState("");
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [sync, setSync] = useState<SyncStatus | null>(null);
+  const [pushing, setPushing] = useState(false);
   const [newSession, setNewSession] = useState({
     session_name: "",
     session_type: "Regular Build",
@@ -70,11 +85,33 @@ export default function AdminDashboard() {
     setLoading(false);
   }, []);
 
+  const fetchSync = useCallback(async () => {
+    const res = await fetch("/api/admin/sync");
+    if (res.ok) setSync(await res.json());
+  }, []);
+
+  const pushNow = async () => {
+    setPushing(true);
+    const res = await fetch("/api/admin/sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    const data = await res.json().catch(() => null);
+    // The real outcome, not just "done" — a silent failure here means records
+    // quietly stop reaching the cloud.
+    if (res.ok) toast.success(data?.message ?? "Pushed to cloud.");
+    else toast.error(data?.message ?? "Push failed.");
+    setPushing(false);
+    fetchSync();
+  };
+
   useEffect(() => {
     fetchData();
+    fetchSync();
     const interval = setInterval(fetchData, 30000);
     return () => clearInterval(interval);
-  }, [fetchData]);
+  }, [fetchData, fetchSync]);
 
   const startSession = async () => {
     if (!newSession.session_name.trim()) return;
@@ -121,8 +158,69 @@ export default function AdminDashboard() {
     fetchData();
   };
 
+  // A record left open usually means the member forgot to tap out, so the
+  // time is editable — prefilled with now for the case where they are leaving.
+  const openCheckout = (row: AttendanceRow) => {
+    setCheckoutRow(row);
+    setCheckoutTime(toDateTimeLocal(new Date()));
+    setCheckoutError(null);
+  };
+
+  const checkoutMinutes = () => {
+    if (!checkoutRow || !checkoutTime) return null;
+    const out = new Date(checkoutTime);
+    if (Number.isNaN(out.getTime())) return null;
+    const mins = Math.round(
+      (out.getTime() - new Date(checkoutRow.check_in_time).getTime()) / 60000
+    );
+    return mins;
+  };
+
+  const checkOutMember = async () => {
+    if (!checkoutRow) return;
+    const mins = checkoutMinutes();
+    if (mins === null || mins <= 0) {
+      setCheckoutError("Check-out must be after check-in.");
+      return;
+    }
+    setCheckingOut(true);
+    setCheckoutError(null);
+    const res = await fetch("/api/admin/attendance/checkout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        attendanceId: checkoutRow.attendance_id,
+        checkOutTime: new Date(checkoutTime).toISOString(),
+      }),
+    });
+    const data = await res.json().catch(() => null);
+    setCheckingOut(false);
+
+    if (!res.ok) {
+      // Keep the dialog open so the time can be corrected in place.
+      setCheckoutError(data?.message ?? "Failed to check out.");
+      return;
+    }
+
+    toast.success(
+      data?.adjusted
+        ? `${data.name} checked out — time adjusted.`
+        : data?.message ?? "Checked out."
+    );
+    setCheckoutRow(null);
+    fetchData();
+  };
+
   const formatTime = (iso: string) =>
     new Date(iso).toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+    });
+
+  const formatDateTime = (iso: string) =>
+    new Date(iso).toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
       hour: "numeric",
       minute: "2-digit",
     });
@@ -187,12 +285,21 @@ export default function AdminDashboard() {
                 {attendance.map((row) => (
                   <li
                     key={row.attendance_id}
-                    className="py-2 flex justify-between text-sm"
+                    className="py-2 flex items-center justify-between gap-3 text-sm"
                   >
                     <span className="font-medium">{getStudentName(row)}</span>
-                    <span className="text-muted-foreground">
-                      in {formatTime(row.check_in_time)}
-                    </span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-muted-foreground">
+                        in {formatTime(row.check_in_time)}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openCheckout(row)}
+                      >
+                        Check Out
+                      </Button>
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -200,6 +307,116 @@ export default function AdminDashboard() {
           </CardContent>
         </Card>
       )}
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <CardTitle className="text-base">Cloud Sync</CardTitle>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={pushNow}
+            disabled={pushing || sync?.configured === false}
+          >
+            {pushing ? "Pushing…" : "Push Now"}
+          </Button>
+        </CardHeader>
+        <CardContent className="text-sm space-y-1">
+          {!sync ? (
+            <p className="text-muted-foreground">Loading…</p>
+          ) : !sync.configured ? (
+            <p className="text-muted-foreground">
+              Not configured — set SYNC_URL and SYNC_TOKEN on the kiosk.
+            </p>
+          ) : (
+            <>
+              <p className="text-muted-foreground">
+                {sync.last_success_at
+                  ? `Last pushed ${formatDateTime(sync.last_success_at)}` +
+                    (sync.last_record_count !== null
+                      ? ` · ${sync.last_record_count} records`
+                      : "")
+                  : "Never pushed."}
+              </p>
+              {sync.last_error && (
+                <p className="text-destructive">
+                  Last attempt failed: {sync.last_error}
+                </p>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog
+        open={checkoutRow !== null}
+        onOpenChange={(open) => {
+          if (!open) setCheckoutRow(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Check out {checkoutRow ? getStudentName(checkoutRow) : ""}?
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-muted-foreground">
+              {checkoutRow &&
+                `Checked in at ${formatTime(checkoutRow.check_in_time)}.`}
+            </p>
+
+            <div className="space-y-1.5">
+              <Label>Check-out time</Label>
+              <Input
+                type="datetime-local"
+                value={checkoutTime}
+                min={
+                  checkoutRow
+                    ? toDateTimeLocal(new Date(checkoutRow.check_in_time))
+                    : undefined
+                }
+                onChange={(e) => {
+                  setCheckoutTime(e.target.value);
+                  setCheckoutError(null);
+                }}
+              />
+              <p className="text-xs text-muted-foreground">
+                {(() => {
+                  const mins = checkoutMinutes();
+                  if (mins === null) return "Defaults to now — adjust if they left earlier.";
+                  if (mins <= 0) return "Check-out must be after check-in.";
+                  const h = Math.floor(mins / 60);
+                  const m = mins % 60;
+                  return `Credits ${h > 0 ? `${h} hr ${m} min` : `${m} min`}.`;
+                })()}
+              </p>
+            </div>
+
+            {checkoutError && (
+              <p className="text-sm text-destructive">{checkoutError}</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setCheckoutRow(null)}
+              disabled={checkingOut}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={checkOutMember}
+              disabled={
+                checkingOut ||
+                checkoutMinutes() === null ||
+                (checkoutMinutes() ?? 0) <= 0
+              }
+            >
+              {checkingOut ? "Checking out…" : "Check Out"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={startOpen} onOpenChange={setStartOpen}>
         <DialogContent>

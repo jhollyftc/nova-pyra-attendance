@@ -1,8 +1,29 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { toDateTimeLocal } from "@/lib/buildDay";
 
 type Entry = { name: string; role: string; checkInTime: string; attendanceId: string };
+
+function clockLabel(iso: string) {
+  return new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+}
+
+/** Minutes the chosen check-out time would credit, or null if it is unusable. */
+function creditedMinutes(checkInTime: string, checkOutTime: string): number | null {
+  if (!checkOutTime) return null;
+  const out = new Date(checkOutTime);
+  if (Number.isNaN(out.getTime())) return null;
+  return Math.round((out.getTime() - new Date(checkInTime).getTime()) / 60000);
+}
+
+function creditLabel(checkInTime: string, checkOutTime: string) {
+  const mins = creditedMinutes(checkInTime, checkOutTime);
+  if (mins === null) return "Enter a valid time.";
+  if (mins <= 0) return "Check-out must be after check-in.";
+  const h = Math.floor(mins / 60);
+  return `Credits ${h > 0 ? `${h}h ${mins % 60}m` : `${mins}m`}.`;
+}
 
 function elapsedLabel(checkInTime: string) {
   const totalMins = Math.floor((Date.now() - new Date(checkInTime).getTime()) / 60000);
@@ -41,7 +62,14 @@ function Group({
 
 type DialogState =
   | { open: false }
-  | { open: true; entry: Entry; password: string; submitting: boolean; error: string | null };
+  | {
+      open: true;
+      entry: Entry;
+      password: string;
+      checkOutTime: string;
+      submitting: boolean;
+      error: string | null;
+    };
 
 export default function CheckedIn({ refreshKey }: { refreshKey?: number }) {
   const [students, setStudents] = useState<Entry[]>([]);
@@ -68,7 +96,16 @@ export default function CheckedIn({ refreshKey }: { refreshKey?: number }) {
   }, [refreshKey]);
 
   const openDialog = (entry: Entry) => {
-    setDialog({ open: true, entry, password: "", submitting: false, error: null });
+    // Prefilled with now; editable because an open record usually means the
+    // member left without tapping out.
+    setDialog({
+      open: true,
+      entry,
+      password: "",
+      checkOutTime: toDateTimeLocal(new Date()),
+      submitting: false,
+      error: null,
+    });
     setTimeout(() => passwordRef.current?.focus(), 50);
   };
 
@@ -76,12 +113,23 @@ export default function CheckedIn({ refreshKey }: { refreshKey?: number }) {
 
   const handleCheckout = async () => {
     if (!dialog.open) return;
+    // Reachable by Enter in the password field, which bypasses the disabled
+    // button, so the time is re-checked here before it is formatted.
+    const mins = creditedMinutes(dialog.entry.checkInTime, dialog.checkOutTime);
+    if (mins === null || mins <= 0) {
+      setDialog({ ...dialog, error: creditLabel(dialog.entry.checkInTime, dialog.checkOutTime) });
+      return;
+    }
     setDialog({ ...dialog, submitting: true, error: null });
 
     const res = await fetch("/api/kiosk/admin-checkout", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ attendanceId: dialog.entry.attendanceId, password: dialog.password }),
+      body: JSON.stringify({
+        attendanceId: dialog.entry.attendanceId,
+        password: dialog.password,
+        checkOutTime: new Date(dialog.checkOutTime).toISOString(),
+      }),
     });
     const data = await res.json();
 
@@ -135,19 +183,44 @@ export default function CheckedIn({ refreshKey }: { refreshKey?: number }) {
           <div className="bg-background border border-border rounded-2xl p-6 w-full max-w-xs shadow-xl space-y-4">
             <div>
               <p className="text-lg font-bold">Check out {dialog.entry.name}?</p>
-              <p className="text-sm text-muted-foreground mt-0.5">Enter admin password to confirm.</p>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Checked in at {clockLabel(dialog.entry.checkInTime)}.
+              </p>
             </div>
 
-            <input
-              ref={passwordRef}
-              type="password"
-              placeholder="Admin password"
-              value={dialog.password}
-              onChange={(e) => setDialog({ ...dialog, password: e.target.value, error: null })}
-              onKeyDown={(e) => { if (e.key === "Enter") handleCheckout(); if (e.key === "Escape") closeDialog(); }}
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-              disabled={dialog.submitting}
-            />
+            <div className="space-y-1.5">
+              <label className="text-xs text-muted-foreground uppercase tracking-widest font-medium">
+                Check-out time
+              </label>
+              <input
+                type="datetime-local"
+                value={dialog.checkOutTime}
+                min={toDateTimeLocal(new Date(dialog.entry.checkInTime))}
+                onChange={(e) => setDialog({ ...dialog, checkOutTime: e.target.value, error: null })}
+                onKeyDown={(e) => { if (e.key === "Escape") closeDialog(); }}
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                disabled={dialog.submitting}
+              />
+              <p className="text-xs text-muted-foreground">
+                {creditLabel(dialog.entry.checkInTime, dialog.checkOutTime)}
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs text-muted-foreground uppercase tracking-widest font-medium">
+                Admin password
+              </label>
+              <input
+                ref={passwordRef}
+                type="password"
+                placeholder="Admin password"
+                value={dialog.password}
+                onChange={(e) => setDialog({ ...dialog, password: e.target.value, error: null })}
+                onKeyDown={(e) => { if (e.key === "Enter") handleCheckout(); if (e.key === "Escape") closeDialog(); }}
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                disabled={dialog.submitting}
+              />
+            </div>
 
             {dialog.error && (
               <p className="text-sm text-red-400">{dialog.error}</p>
@@ -165,7 +238,11 @@ export default function CheckedIn({ refreshKey }: { refreshKey?: number }) {
               <button
                 type="button"
                 onClick={handleCheckout}
-                disabled={dialog.submitting || !dialog.password}
+                disabled={
+                  dialog.submitting ||
+                  !dialog.password ||
+                  (creditedMinutes(dialog.entry.checkInTime, dialog.checkOutTime) ?? 0) <= 0
+                }
                 className="flex-1 h-9 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 transition-colors disabled:opacity-50"
               >
                 {dialog.submitting ? "…" : "Check Out"}
