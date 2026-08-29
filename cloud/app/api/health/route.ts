@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import postgres from "postgres";
 import { verifyToken, COOKIE_NAME } from "@/lib/auth";
+import { db } from "@/lib/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -74,6 +75,29 @@ export async function GET(req: NextRequest) {
       });
     } finally {
       try { await sql.end({ timeout: 3 }); } catch {}
+    }
+  }
+
+  // The page uses the shared, globally cached client and times out where the
+  // fresh clients above succeed. These two isolate which half is at fault:
+  // the cached client itself, or the report queries it runs.
+  for (const [label, run] of [
+    ["shared-client-select1", async () => { await db()`select 1 as ok`; }],
+    ["shared-client-real-query", async () => { await db()`select name from mirror.seasons limit 1`; }],
+  ] as const) {
+    const started = Date.now();
+    try {
+      await Promise.race([
+        run(),
+        new Promise((_, rj) => setTimeout(() => rj(new Error("timed out after 6000ms")), 6000)),
+      ]);
+      attempts.push({ mode: label, ok: true, ms: Date.now() - started });
+    } catch (e) {
+      const err = e as { code?: string; message?: string };
+      attempts.push({
+        mode: label, ok: false, ms: Date.now() - started,
+        code: err.code ?? null, message: (err.message ?? String(e)).slice(0, 300),
+      });
     }
   }
 
