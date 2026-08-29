@@ -111,6 +111,14 @@ function initSchema(db: Database.Database) {
       created_at  TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS sync_state (
+      id                INTEGER PRIMARY KEY CHECK (id = 1),
+      last_attempt_at   TEXT,
+      last_success_at   TEXT,
+      last_error        TEXT,
+      last_record_count INTEGER
+    );
+
     CREATE INDEX IF NOT EXISTS idx_att_student_status_time ON attendance_records(student_id, status, check_in_time DESC);
     CREATE INDEX IF NOT EXISTS idx_att_status_time         ON attendance_records(status, check_in_time DESC);
     CREATE INDEX IF NOT EXISTS idx_att_session_status      ON attendance_records(session_id, status);

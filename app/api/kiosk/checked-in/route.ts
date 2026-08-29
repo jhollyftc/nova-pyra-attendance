@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
+import { rolloverStaleSessions } from "@/lib/rollover";
+import { maybeAutoPush } from "@/lib/sync";
 
 export async function GET() {
+  // The kiosk polls this every 15s, so an idle machine rolls the day over on its own.
+  rolloverStaleSessions();
+  // Not awaited: the poll must not wait on the network.
+  maybeAutoPush();
+
   const db = getDb();
 
   const rows = db
