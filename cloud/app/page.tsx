@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { verifyToken, COOKIE_NAME } from "@/lib/auth";
 import { memberTotals, seasons, lastSync } from "@/lib/report";
+import { looksPooled } from "@/lib/db";
 import SeasonPicker from "./SeasonPicker";
 
 // Always reflects the latest push; nothing here is worth caching.
@@ -30,11 +31,41 @@ export default async function Home({
   if (!token || !(await verifyToken(token))) redirect("/login");
 
   const { season } = await searchParams;
-  const [all, totals, sync] = await Promise.all([
-    seasons(),
-    memberTotals(season),
-    lastSync(),
-  ]);
+
+  // A database that cannot be reached must say so. Left unhandled, the queries
+  // hang until the platform kills the request and the visitor sees a blank
+  // page with no indication of what went wrong.
+  let all, totals, sync;
+  try {
+    [all, totals, sync] = await Promise.all([
+      seasons(),
+      memberTotals(season),
+      lastSync(),
+    ]);
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e);
+    return (
+      <main>
+        <header className="top">
+          <h1>Attendance</h1>
+        </header>
+        <div className="card">
+          <div className="empty">
+            <p className="error">Cannot reach the database.</p>
+            <p style={{ marginTop: ".75rem" }}>{detail}</p>
+            {!looksPooled(process.env.DATABASE_URL) && (
+              <p style={{ marginTop: ".75rem" }}>
+                DATABASE_URL does not look like Supabase&rsquo;s pooled connection
+                string. It needs to contain <code>pooler.</code> and port{" "}
+                <code>6543</code> — the direct connection is not reachable from
+                Vercel.
+              </p>
+            )}
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   const current = season ?? all[0]?.name ?? "";
   const totalMinutes = totals.reduce((sum, t) => sum + t.minutes, 0);
