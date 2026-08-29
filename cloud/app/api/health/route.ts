@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import postgres from "postgres";
 import { verifyToken, COOKIE_NAME } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { seasons, memberTotals, lastSync } from "@/lib/report";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -84,6 +85,14 @@ export async function GET(req: NextRequest) {
   for (const [label, run] of [
     ["shared-client-select1", async () => { await db()`select 1 as ok`; }],
     ["shared-client-real-query", async () => { await db()`select name from mirror.seasons limit 1`; }],
+    // Each report query on its own, then all three concurrently — exactly what
+    // the page does. If only the concurrent case stalls, max:1 is the culprit.
+    ["report-seasons", async () => { await seasons(); }],
+    ["report-lastSync", async () => { await lastSync(); }],
+    ["report-memberTotals", async () => { await memberTotals(); }],
+    ["report-all-concurrent", async () => {
+      await Promise.all([seasons(), memberTotals(), lastSync()]);
+    }],
   ] as const) {
     const started = Date.now();
     try {
