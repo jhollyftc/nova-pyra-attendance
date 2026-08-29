@@ -1,22 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
-import postgres from "postgres";
 import { verifyToken, COOKIE_NAME } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { seasons, memberTotals, lastSync } from "@/lib/report";
+import { db, looksPooled, withTimeout } from "@/lib/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 30;
 
 /**
- * Connection diagnostics, reported from inside the deployment.
+ * Connection check, reported from inside the deployment.
  *
- * Whether the database is reachable from a laptop says nothing about whether
- * it is reachable from a serverless function. This reports what the function
- * itself sees — the host it is dialling, and how each TLS mode behaves —
- * without ever revealing the credentials.
+ * Reachability from a laptop says nothing about reachability from a serverless
+ * function — this answers the latter. Credentials are never disclosed, only
+ * the shape of the value, which is enough to catch one pasted with quotes,
+ * whitespace, or the placeholder left in.
  *
- * Gated on the session cookie: it discloses infrastructure details.
+ * Gated on the session cookie: it reveals infrastructure details.
  */
 export async function GET(req: NextRequest) {
   const token = req.cookies.get(COOKIE_NAME)?.value;
@@ -29,86 +26,39 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ configured: false, message: "DATABASE_URL is not set." });
   }
 
-  // Report the shape of the value without leaking the password.
-  let parsed: Record<string, unknown>;
+  let shape: Record<string, unknown> = {};
   try {
     const u = new URL(raw);
-    parsed = {
+    shape = {
       host: u.hostname,
       port: u.port,
-      user: u.username,
       userHasDot: u.username.includes("."),
-      database: u.pathname.replace("/", ""),
+      pooled: looksPooled(raw),
       hasPassword: Boolean(u.password),
-      passwordLength: u.password.length,
-      search: u.search || null,
-      rawLength: raw.length,
-      trimmedDiffers: raw !== raw.trim(),
-      wrappedInQuotes: /^["'].*["']$/.test(raw.trim()),
     };
-  } catch (e) {
-    return NextResponse.json({
-      configured: true,
-      parseError: e instanceof Error ? e.message : String(e),
-      rawLength: raw.length,
-    });
+  } catch {
+    shape = { parseError: true, rawLength: raw.length };
   }
 
-  const attempts: Record<string, unknown>[] = [];
-  for (const [label, ssl] of [
-    ["ssl-require", "require"],
-    ["ssl-noverify", { rejectUnauthorized: false }],
-    ["no-ssl", false],
-  ] as const) {
-    const started = Date.now();
-    const sql = postgres(raw, { prepare: false, max: 1, connect_timeout: 6, ssl });
-    try {
-      await sql`select 1 as ok`;
-      attempts.push({ mode: label, ok: true, ms: Date.now() - started });
-    } catch (e) {
-      const err = e as { code?: string; errno?: string; message?: string };
-      attempts.push({
-        mode: label,
+  const started = Date.now();
+  try {
+    await withTimeout(db()`select 1 as ok`, 5000);
+    return NextResponse.json({
+      ok: true,
+      ms: Date.now() - started,
+      region: process.env.VERCEL_REGION ?? null,
+      shape,
+    });
+  } catch (e) {
+    return NextResponse.json(
+      {
         ok: false,
         ms: Date.now() - started,
-        code: err.code ?? err.errno ?? null,
-        message: (err.message ?? String(e)).slice(0, 300),
-      });
-    } finally {
-      try { await sql.end({ timeout: 3 }); } catch {}
-    }
+        region: process.env.VERCEL_REGION ?? null,
+        shape,
+        error: e instanceof Error ? e.message : String(e),
+      },
+      { status: 503 }
+    );
   }
-
-  // The page uses the shared, globally cached client and times out where the
-  // fresh clients above succeed. These two isolate which half is at fault:
-  // the cached client itself, or the report queries it runs.
-  for (const [label, run] of [
-    ["shared-client-select1", async () => { await db()`select 1 as ok`; }],
-    ["shared-client-real-query", async () => { await db()`select name from mirror.seasons limit 1`; }],
-    // Each report query on its own, then all three concurrently — exactly what
-    // the page does. If only the concurrent case stalls, max:1 is the culprit.
-    ["report-seasons", async () => { await seasons(); }],
-    ["report-lastSync", async () => { await lastSync(); }],
-    ["report-memberTotals", async () => { await memberTotals(); }],
-    ["report-all-concurrent", async () => {
-      await Promise.all([seasons(), memberTotals(), lastSync()]);
-    }],
-  ] as const) {
-    const started = Date.now();
-    try {
-      await Promise.race([
-        run(),
-        new Promise((_, rj) => setTimeout(() => rj(new Error("timed out after 6000ms")), 6000)),
-      ]);
-      attempts.push({ mode: label, ok: true, ms: Date.now() - started });
-    } catch (e) {
-      const err = e as { code?: string; message?: string };
-      attempts.push({
-        mode: label, ok: false, ms: Date.now() - started,
-        code: err.code ?? null, message: (err.message ?? String(e)).slice(0, 300),
-      });
-    }
-  }
-
-  return NextResponse.json({ configured: true, region: process.env.VERCEL_REGION ?? null, parsed, attempts });
 }

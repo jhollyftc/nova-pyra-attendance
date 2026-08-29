@@ -20,7 +20,7 @@ function connect(): postgres.Sql {
   if (!url) throw new Error("DATABASE_URL is not set.");
   return postgres(url, {
     prepare: false,
-    max: 1,
+    max: 3,
     idle_timeout: 20,
     connect_timeout: 8,
     // Supabase terminates TLS at the pooler. Without this the password

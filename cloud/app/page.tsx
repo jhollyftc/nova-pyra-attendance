@@ -37,9 +37,13 @@ export default async function Home({
   // page with no indication of what went wrong.
   let all, totals, sync;
   try {
-    [all, totals, sync] = await withTimeout(
-      Promise.all([seasons(), memberTotals(season), lastSync()])
-    );
+    // Read sequentially, not with Promise.all. More concurrent queries than
+    // pooled connections makes postgres.js pipeline them onto one connection,
+    // which the transaction pooler deadlocks on. Three reads at ~200ms each
+    // are not worth that risk.
+    all = await withTimeout(seasons());
+    totals = await withTimeout(memberTotals(season));
+    sync = await withTimeout(lastSync());
   } catch (e) {
     const detail = e instanceof Error ? e.message : String(e);
     return (
