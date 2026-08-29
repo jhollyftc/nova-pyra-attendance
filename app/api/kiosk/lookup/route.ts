@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { findStudentByPin, stmt } from "@/lib/db";
+import { rolloverStaleSessions } from "@/lib/rollover";
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
@@ -13,6 +14,8 @@ export async function POST(req: NextRequest) {
   }
 
   const studentName = matched.display_name ?? matched.first_name;
+
+  rolloverStaleSessions();
 
   const session = stmt(
     `SELECT session_id FROM sessions WHERE status = 'active' LIMIT 1`

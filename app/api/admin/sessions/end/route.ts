@@ -23,9 +23,11 @@ export async function POST(req: NextRequest) {
 
   const result = db.prepare(
     `UPDATE attendance_records
-     SET status = 'missing_checkout', check_out_time = ?, updated_at = datetime('now')
+     SET status = 'missing_checkout', check_out_time = ?,
+         total_minutes = CAST(ROUND((julianday(?) - julianday(check_in_time)) * 1440) AS INTEGER),
+         updated_at = datetime('now')
      WHERE session_id = ? AND status = 'checked_in'`
-  ).run(endTime, body.sessionId);
+  ).run(endTime, endTime, body.sessionId);
 
   return NextResponse.json({ success: true, missedCount: result.changes });
 }

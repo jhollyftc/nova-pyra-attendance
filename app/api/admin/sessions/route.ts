@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyToken, COOKIE_NAME } from "@/lib/auth";
 import { getDb } from "@/lib/db";
+import { rolloverStaleSessions } from "@/lib/rollover";
 import { randomUUID } from "crypto";
 
 function authErr() {
@@ -14,6 +15,8 @@ async function checkAuth(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   if (!await checkAuth(req)) return authErr();
+
+  rolloverStaleSessions();
 
   const db = getDb();
   const sessions = db

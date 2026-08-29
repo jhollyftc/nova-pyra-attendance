@@ -1,20 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { findStudentByPin, stmt } from "@/lib/db";
+import { buildDate, rolloverStaleSessions, sessionNameFor } from "@/lib/rollover";
 import { randomUUID } from "crypto";
 
 function err(message: string, status: number) {
   return NextResponse.json({ message }, { status });
-}
-
-function todaySessionName() {
-  return (
-    "Build Session — " +
-    new Date().toLocaleDateString("en-US", {
-      weekday: "long",
-      month: "long",
-      day: "numeric",
-    })
-  );
 }
 
 export async function POST(req: NextRequest) {
@@ -25,6 +15,9 @@ export async function POST(req: NextRequest) {
 
   const { pin } = body as { pin: string };
 
+  // Retire yesterday's session before reusing it for today.
+  rolloverStaleSessions();
+
   // Find or auto-create today's active session
   let session = stmt(
     `SELECT session_id FROM sessions WHERE status = 'active' LIMIT 1`
@@ -32,11 +25,12 @@ export async function POST(req: NextRequest) {
 
   if (!session) {
     const now = new Date();
+    const today = buildDate(now);
     const id = randomUUID();
     stmt(
       `INSERT INTO sessions (session_id, session_name, session_type, session_date, actual_start_time, status)
        VALUES (?, ?, 'Regular Build', ?, ?, 'active')`
-    ).run(id, todaySessionName(), now.toISOString().split("T")[0], now.toISOString());
+    ).run(id, sessionNameFor(today), today, now.toISOString());
     session = { session_id: id };
   }
 
@@ -67,4 +61,3 @@ export async function POST(req: NextRequest) {
     detail: `Checked in at ${timeStr}`,
   });
 }
-
