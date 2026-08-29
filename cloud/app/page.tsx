@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { verifyToken, COOKIE_NAME } from "@/lib/auth";
 import { memberTotals, seasons, lastSync } from "@/lib/report";
-import { looksPooled } from "@/lib/db";
+import { looksPooled, withTimeout } from "@/lib/db";
 import SeasonPicker from "./SeasonPicker";
 
 // Always reflects the latest push; nothing here is worth caching.
@@ -37,11 +37,9 @@ export default async function Home({
   // page with no indication of what went wrong.
   let all, totals, sync;
   try {
-    [all, totals, sync] = await Promise.all([
-      seasons(),
-      memberTotals(season),
-      lastSync(),
-    ]);
+    [all, totals, sync] = await withTimeout(
+      Promise.all([seasons(), memberTotals(season), lastSync()])
+    );
   } catch (e) {
     const detail = e instanceof Error ? e.message : String(e);
     return (

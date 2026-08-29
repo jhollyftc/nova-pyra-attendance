@@ -23,6 +23,9 @@ function connect(): postgres.Sql {
     max: 1,
     idle_timeout: 20,
     connect_timeout: 8,
+    // Supabase terminates TLS at the pooler. Without this the password
+    // crosses the public internet in the clear.
+    ssl: "require",
   });
 }
 
@@ -34,4 +37,23 @@ export function db(): postgres.Sql {
 /** True when the string is the pooled connection Vercel needs, not the direct one. */
 export function looksPooled(url: string | undefined): boolean {
   return Boolean(url && url.includes("pooler.") && url.includes(":6543"));
+}
+
+/**
+ * Fails a query that never settles.
+ *
+ * postgres.js's own connect_timeout did not fire against a stalled socket in
+ * production, so the page hung until the platform killed it. This is a ceiling
+ * this app controls, set below the platform's request limit so the failure is
+ * ours to report rather than a blank page.
+ */
+export function withTimeout<T>(work: Promise<T>, ms = 8000): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const guard = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`Timed out after ${ms}ms waiting for the database.`)),
+      ms
+    );
+  });
+  return Promise.race([work, guard]).finally(() => clearTimeout(timer)) as Promise<T>;
 }
