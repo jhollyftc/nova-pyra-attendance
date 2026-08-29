@@ -1,6 +1,6 @@
 import { SignJWT, jwtVerify } from "jose";
 
-export const COOKIE_NAME = "npa_session";
+export { COOKIE_NAME } from "@/lib/cookie";
 
 function secret() {
   const s = process.env.SESSION_SECRET;
