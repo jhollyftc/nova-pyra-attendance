@@ -70,6 +70,7 @@ export default function AdminDashboard() {
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [sync, setSync] = useState<SyncStatus | null>(null);
   const [pushing, setPushing] = useState(false);
+  const [backingUp, setBackingUp] = useState(false);
   const [newSession, setNewSession] = useState({
     session_name: "",
     session_type: "Regular Build",
@@ -211,6 +212,14 @@ export default function AdminDashboard() {
     fetchData();
   };
 
+  // Navigates rather than fetching, so the browser handles the file itself and
+  // the session cookie rides along.
+  const downloadBackup = () => {
+    setBackingUp(true);
+    window.location.href = "/api/admin/backup";
+    setTimeout(() => setBackingUp(false), 3000);
+  };
+
   const formatTime = (iso: string) =>
     new Date(iso).toLocaleTimeString("en-US", {
       hour: "numeric",
@@ -344,6 +353,27 @@ export default function AdminDashboard() {
               )}
             </>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <CardTitle className="text-base">Backup</CardTitle>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={downloadBackup}
+            disabled={backingUp}
+          >
+            {backingUp ? "Preparing…" : "Download Backup"}
+          </Button>
+        </CardHeader>
+        <CardContent className="text-sm text-muted-foreground space-y-1">
+          <p>
+            A complete copy of this kiosk&rsquo;s database — the only place member
+            names and PINs are stored. The cloud mirror is not a backup.
+          </p>
+          <p>Keep the file somewhere safe: it contains every member&rsquo;s PIN.</p>
         </CardContent>
       </Card>
 
