@@ -73,3 +73,5 @@ td.dim { color: var(--muted); }
 .login h1 { font-size: 1.25rem; margin-bottom: 1rem; }
 .login input { width: 100%; margin-bottom: .6rem; }
 .login button { width: 100%; }
+
+.hint { color: var(--muted); font-size: .8rem; }

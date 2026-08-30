@@ -68,3 +68,19 @@ export async function lastSync(): Promise<SyncInfo | null> {
   `;
   return rows[0] ?? null;
 }
+
+/**
+ * Last push for one specific season.
+ *
+ * The global "last sync" is misleading on an older season's page: it reports
+ * when the *current* season was pushed, making stale data look fresh.
+ */
+export async function lastSyncFor(seasonName: string): Promise<SyncInfo | null> {
+  const sql = db();
+  const rows = await sql<SyncInfo[]>`
+    SELECT received_at::text, season, record_count
+    FROM mirror.sync_log WHERE season = ${seasonName}
+    ORDER BY received_at DESC LIMIT 1
+  `;
+  return rows[0] ?? null;
+}
