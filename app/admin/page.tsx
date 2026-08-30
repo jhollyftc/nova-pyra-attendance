@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toDateTimeLocal } from "@/lib/buildDay";
+import { getAllSeasons, getCurrentSeason } from "@/lib/seasons";
 import {
   Select,
   SelectContent,
@@ -71,6 +72,10 @@ export default function AdminDashboard() {
   const [sync, setSync] = useState<SyncStatus | null>(null);
   const [pushing, setPushing] = useState(false);
   const [backingUp, setBackingUp] = useState(false);
+  // Every season the team has had, so a past one can be backfilled to the
+  // cloud. The automatic daily push only ever sends the current season.
+  const seasonNames = useMemo(() => getAllSeasons().map((s) => s.name), []);
+  const [pushSeason, setPushSeason] = useState(() => getCurrentSeason().name);
   const [newSession, setNewSession] = useState({
     session_name: "",
     session_type: "Regular Build",
@@ -96,7 +101,7 @@ export default function AdminDashboard() {
     const res = await fetch("/api/admin/sync", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ season: pushSeason }),
     });
     const data = await res.json().catch(() => null);
     // The real outcome, not just "done" — a silent failure here means records
@@ -320,14 +325,28 @@ export default function AdminDashboard() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardTitle className="text-base">Cloud Sync</CardTitle>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={pushNow}
-            disabled={pushing || sync?.configured === false}
-          >
-            {pushing ? "Pushing…" : "Push Now"}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Select value={pushSeason} onValueChange={(v) => setPushSeason(v ?? pushSeason)}>
+              <SelectTrigger className="h-8 w-[180px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {seasonNames.map((n) => (
+                  <SelectItem key={n} value={n}>
+                    {n}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={pushNow}
+              disabled={pushing || sync?.configured === false}
+            >
+              {pushing ? "Pushing…" : "Push Now"}
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="text-sm space-y-1">
           {!sync ? (
@@ -338,6 +357,10 @@ export default function AdminDashboard() {
             </p>
           ) : (
             <>
+              <p className="text-muted-foreground">
+                Pushes the selected season. The daily automatic push always
+                sends the current one.
+              </p>
               <p className="text-muted-foreground">
                 {sync.last_success_at
                   ? `Last pushed ${formatDateTime(sync.last_success_at)}` +
